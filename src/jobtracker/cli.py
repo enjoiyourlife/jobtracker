@@ -1,0 +1,207 @@
+"""
+Command-line interface.
+
+Reads the database and drives the application workflow. Scoring happens
+here at query time rather than being persisted, so editing config.yaml
+re-ranks everything on the next command with no migration.
+
+Commands:
+    queue    ranked postings awaiting a decision
+    apply    open a posting in the browser and queue it
+    mark     advance an application's status
+    status   pipeline counts and ghosted submissions
+    review   postings the classifier could not categorize
+"""
+
+from __future__ import annotations
+
+import argparse
+import sqlite3
+import webbrowser
+
+from jobtracker.db import applications as apps
+from jobtracker.db.connection import session
+from jobtracker.filters import Classification, Criteria, classify, score
+
+
+def _scored_jobs(conn: sqlite3.Connection, criteria: Criteria) -> dict[int, int]:
+    """
+    Score every open posting that classifies as a coding role.
+
+    Returns job_id -> score for those at or above min_score.
+    """
+    rows = conn.execute(
+        "SELECT id, title, location, description FROM jobs WHERE closed_at IS NULL"
+    ).fetchall()
+
+    result: dict[int, int] = {}
+    for row in rows:
+        if classify(row["title"], criteria) is not Classification.MATCH:
+            continue
+        breakdown = score(
+            row["title"], row["location"], row["description"], criteria
+        )
+        if breakdown.total >= criteria.min_score:
+            result[row["id"]] = breakdown.total
+    return result
+
+
+def cmd_queue(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    criteria = Criteria.load()
+    entries = apps.queue(conn, _scored_jobs(conn, criteria), limit=args.limit)
+
+    if not entries:
+        print("Queue empty. Poll for new postings or lower min_score.")
+        return 0
+
+    for i, e in enumerate(entries, 1):
+        location = e.location or "—"
+        print(f"{i:>3}. [{e.score:>3}] {e.title}")
+        print(f"      {e.company} · {location}")
+        print(f"      {e.url}")
+        print(f"      job_id={e.job_id}")
+    print(f"\n{len(entries)} awaiting decision")
+    return 0
+
+
+def cmd_apply(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """
+    Open a posting and queue it.
+
+    The browser is opened rather than the form submitted: every ATS puts
+    its own questions, uploads, and anti-bot checks on the apply page,
+    and submitting programmatically would violate their terms and risk
+    the account. This is the handoff point between automation and you.
+    """
+    row = conn.execute(
+        """
+        SELECT j.absolute_url, j.title, c.name AS company
+          FROM jobs j JOIN companies c ON c.id = j.company_id
+         WHERE j.id = ?
+        """,
+        (args.job_id,),
+    ).fetchone()
+
+    if row is None:
+        print(f"No job with id {args.job_id}")
+        return 1
+
+    apps.add(conn, args.job_id, score=args.score)
+    conn.commit()
+
+    print(f"Queued: {row['title']} at {row['company']}")
+    print(f"Opening {row['absolute_url']}")
+    print("Once submitted:  jobtracker mark", args.job_id, "submitted")
+    webbrowser.open(row["absolute_url"])
+    return 0
+
+
+def cmd_mark(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    try:
+        apps.add(conn, args.job_id)          # no-op if already tracked
+        apps.set_status(conn, args.job_id, args.status)
+        conn.commit()
+    except apps.TransitionError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    print(f"job_id {args.job_id} -> {args.status}")
+    return 0
+
+
+def cmd_status(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    counts = apps.pipeline(conn)
+    if not counts:
+        print("No applications yet.")
+        return 0
+
+    order = [
+        "queued", "skipped", "submitted", "acknowledged",
+        "screening", "interview", "offer", "rejected",
+    ]
+    print("Pipeline")
+    for status in order:
+        if status in counts:
+            print(f"  {status:<14} {counts[status]}")
+
+    submitted = sum(
+        counts.get(s, 0)
+        for s in ("submitted", "acknowledged", "screening", "interview", "offer")
+    )
+    responded = sum(
+        counts.get(s, 0)
+        for s in ("acknowledged", "screening", "interview", "offer")
+    )
+    if submitted:
+        print(f"\nResponse rate: {responded}/{submitted} ({responded / submitted:.0%})")
+
+    stale = apps.ghosted(conn)
+    if stale:
+        print(f"\nNo response in {apps.GHOST_THRESHOLD_DAYS}+ days ({len(stale)})")
+        for s in stale[:10]:
+            print(f"  {s['days_out']:>3}d  {s['title']} · {s['company']}")
+    return 0
+
+
+def cmd_review(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """
+    Titles the classifier could not place.
+
+    This bucket exists so an unusual but real title ("Member of Technical
+    Staff") surfaces for review instead of being silently discarded.
+    Anything genuinely relevant here belongs in config.yaml's include list.
+    """
+    criteria = Criteria.load()
+    rows = conn.execute(
+        "SELECT DISTINCT title FROM jobs WHERE closed_at IS NULL ORDER BY title"
+    ).fetchall()
+
+    unknown = [
+        r["title"]
+        for r in rows
+        if classify(r["title"], criteria) is Classification.UNCLASSIFIED
+    ]
+    for title in unknown[: args.limit]:
+        print(title)
+    print(f"\n{len(unknown)} unclassified titles")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="jobtracker")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_queue = sub.add_parser("queue", help="ranked postings awaiting a decision")
+    p_queue.add_argument("--limit", type=int, default=25)
+    p_queue.set_defaults(func=cmd_queue)
+
+    p_apply = sub.add_parser("apply", help="open a posting and queue it")
+    p_apply.add_argument("job_id", type=int)
+    p_apply.add_argument("--score", type=int, default=None)
+    p_apply.set_defaults(func=cmd_apply)
+
+    p_mark = sub.add_parser("mark", help="advance an application's status")
+    p_mark.add_argument("job_id", type=int)
+    p_mark.add_argument(
+        "status",
+        choices=[
+            "queued", "skipped", "submitted", "acknowledged",
+            "screening", "interview", "offer", "rejected",
+        ],
+    )
+    p_mark.set_defaults(func=cmd_mark)
+
+    p_status = sub.add_parser("status", help="pipeline counts and ghosted submissions")
+    p_status.set_defaults(func=cmd_status)
+
+    p_review = sub.add_parser("review", help="titles the classifier could not place")
+    p_review.add_argument("--limit", type=int, default=50)
+    p_review.set_defaults(func=cmd_review)
+
+    args = parser.parse_args()
+    with session() as conn:
+        return args.func(conn, args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

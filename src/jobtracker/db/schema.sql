@@ -54,3 +54,28 @@ CREATE INDEX IF NOT EXISTS idx_jobs_company   ON jobs(company_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_open      ON jobs(closed_at) WHERE closed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_jobs_lastseen  ON jobs(last_seen);
 CREATE INDEX IF NOT EXISTS idx_jobs_updated   ON jobs(updated_at);
+
+-- Roles being pursued. A row exists only once a decision has been made,
+-- so this table means "acted on" rather than "seen". Discovery lives in
+-- jobs; queue membership is the absence of a row here.
+--
+-- job_id is UNIQUE: one application per posting, enforced by the
+-- database rather than by remembering to check.
+CREATE TABLE IF NOT EXISTS applications (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id         INTEGER NOT NULL UNIQUE REFERENCES jobs(id),
+    status         TEXT    NOT NULL DEFAULT 'queued'
+                   CHECK (status IN (
+                       'queued', 'skipped', 'submitted', 'acknowledged',
+                       'screening', 'interview', 'offer', 'rejected'
+                   )),
+    score          INTEGER,         -- score when queued, for later analysis
+    notes          TEXT,
+    queued_at      TEXT    NOT NULL,
+    submitted_at   TEXT,            -- set once, on transition to 'submitted'
+    last_status_at TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
+CREATE INDEX IF NOT EXISTS idx_apps_submitted ON applications(submitted_at)
+    WHERE submitted_at IS NOT NULL;

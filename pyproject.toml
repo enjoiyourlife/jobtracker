@@ -6,7 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "jobtracker"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["httpx"]
+dependencies = ["httpx", "pyyaml"]
+
+# Installs a `jobtracker` command on PATH that calls cli.main().
+[project.scripts]
+jobtracker = "jobtracker.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
