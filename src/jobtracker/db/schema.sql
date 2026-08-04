@@ -35,20 +35,22 @@ CREATE TABLE IF NOT EXISTS companies (
 -- global_id = "{ats}:{slug}:{ats_job_id}" — stable across runs,
 -- unique across every ATS. This is what upserts match on.
 CREATE TABLE IF NOT EXISTS jobs (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    global_id   TEXT    NOT NULL UNIQUE,
-    company_id  INTEGER NOT NULL REFERENCES companies(id),
-    ats_job_id  TEXT    NOT NULL,
-    title       TEXT    NOT NULL,
-    location    TEXT,
-    absolute_url TEXT   NOT NULL,
-    description TEXT,
-    raw_payload TEXT    NOT NULL,   -- full JSON, verbatim, for backfill
-    first_seen  TEXT    NOT NULL,
-    last_seen   TEXT    NOT NULL,   -- fact about our poller
-    closed_at   TEXT                -- fact about the job; NULL = open
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    global_id    TEXT    NOT NULL UNIQUE,
+    company_id   INTEGER NOT NULL REFERENCES companies(id),
+    ats_job_id   TEXT    NOT NULL,
+    title        TEXT    NOT NULL,
+    location     TEXT,
+    absolute_url TEXT    NOT NULL,
+    description  TEXT,
+    raw_payload  TEXT    NOT NULL,  -- full JSON, verbatim, for backfill
+    updated_at   TEXT,              -- posting's own last-modified, per the ATS
+    first_seen   TEXT    NOT NULL,  -- write-once
+    last_seen    TEXT    NOT NULL,  -- fact about our poller
+    closed_at    TEXT               -- fact about the job; NULL = open
 );
 
-CREATE INDEX IF NOT EXISTS idx_jobs_company  ON jobs(company_id);
-CREATE INDEX IF NOT EXISTS idx_jobs_open     ON jobs(closed_at) WHERE closed_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_jobs_lastseen ON jobs(last_seen);
+CREATE INDEX IF NOT EXISTS idx_jobs_company   ON jobs(company_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_open      ON jobs(closed_at) WHERE closed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_jobs_lastseen  ON jobs(last_seen);
+CREATE INDEX IF NOT EXISTS idx_jobs_updated   ON jobs(updated_at);

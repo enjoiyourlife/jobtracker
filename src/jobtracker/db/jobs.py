@@ -55,6 +55,10 @@ def upsert_jobs(
     distinguish them. One query plus a set membership test is both
     correct and cheaper than per-row inspection.
 
+    first_seen and company_id are deliberately absent from the UPDATE
+    clause — they are write-once facts, and overwriting first_seen would
+    destroy the only record of when we discovered a posting.
+
     Returns:
         (seen, new) — total processed, and how many were first-time inserts.
     """
@@ -76,22 +80,24 @@ def upsert_jobs(
             """
             INSERT INTO jobs (
                 global_id, company_id, ats_job_id, title, location,
-                absolute_url, description, raw_payload, first_seen, last_seen
+                absolute_url, description, raw_payload, updated_at,
+                first_seen, last_seen
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(global_id) DO UPDATE SET
                 title        = excluded.title,
                 location     = excluded.location,
                 absolute_url = excluded.absolute_url,
                 description  = excluded.description,
                 raw_payload  = excluded.raw_payload,
+                updated_at   = excluded.updated_at,
                 last_seen    = excluded.last_seen,
                 closed_at    = NULL
             """,
             (
                 job.global_id, company_id, job.ats_job_id, job.title,
                 job.location, job.absolute_url, job.description,
-                job.raw_payload, now, now,
+                job.raw_payload, job.updated_at, now, now,
             ),
         )
 
