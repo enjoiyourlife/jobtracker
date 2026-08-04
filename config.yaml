@@ -47,7 +47,9 @@ role:
     - member of technical staff
 
   # Evaluated first. These contain include-list words but are not
-  # coding roles — the reason a naive include-only filter returns junk.
+  # coding roles, or are too senior — the reason a naive include-only
+  # filter returns junk. Multi-word senior titles need their own
+  # entries: "staff engineer" does not match "Staff Software Engineer".
   exclude:
     - sales engineer
     - solutions engineer
@@ -69,7 +71,10 @@ role:
     - engineering intern      # remove this line if internships are wanted
     - principal
     - staff engineer
+    - staff software
     - distinguished
+    - phd
+    - founding
 
 # Seniority scoring. Applied to the title.
 seniority:
@@ -87,6 +92,7 @@ seniority:
     - senior
     - sr.
     - lead
+    - staff
     - "iii"
     - "iv"
 
