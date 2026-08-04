@@ -5,3 +5,4 @@ data/*.db
 .pytest_cache/
 .DS_Store
 .env
+*.egg-info/
