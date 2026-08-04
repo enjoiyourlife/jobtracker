@@ -1,0 +1,107 @@
+# ─────────────────────────────────────────────────────────────
+# jobtracker search criteria
+# Edit this file, rerun the filter. No code changes required.
+#
+# Matching is case-insensitive substring on the job title unless
+# noted. Order of evaluation: exclude wins, then include, then
+# anything left over lands in "unclassified" for weekly review.
+# ─────────────────────────────────────────────────────────────
+
+boards:
+  greenhouse:
+    - stripe
+    - figma
+
+role:
+  # A title matching any of these is a candidate coding role.
+  include:
+    - software engineer
+    - software developer
+    - software dev
+    - swe
+    - backend engineer
+    - back end engineer
+    - backend developer
+    - frontend engineer
+    - front end engineer
+    - frontend developer
+    - full stack
+    - fullstack
+    - application developer
+    - applications engineer
+    - platform engineer
+    - systems engineer
+    - sdet
+    - test engineer
+    - automation engineer
+    - qa engineer
+    - quality engineer
+    - member of technical staff
+
+  # Evaluated first. These contain include-list words but are not
+  # coding roles — the reason a naive include-only filter returns junk.
+  exclude:
+    - sales engineer
+    - solutions engineer
+    - solution engineer
+    - customer engineer
+    - support engineer
+    - field engineer
+    - engineering manager
+    - manager, engineering
+    - manager, software
+    - head of
+    - vp
+    - director
+    - recruiter
+    - technical recruiter
+    - program manager
+    - product manager
+    - technical program manager
+    - engineering intern      # remove this line if internships are wanted
+    - principal
+    - staff engineer
+    - distinguished
+
+# Seniority scoring. Applied to the title.
+seniority:
+  preferred:                  # +30
+    - junior
+    - associate
+    - new grad
+    - new graduate
+    - university grad
+    - entry level
+    - "i"
+    - "1"
+  neutral: 0                  # no seniority marker at all
+  penalized:                  # -40
+    - senior
+    - sr.
+    - lead
+    - "iii"
+    - "iv"
+
+# Location scoring, matched against the posting's location string.
+location:
+  tiers:
+    - score: 40
+      match: [seattle, bellevue, redmond, kirkland]
+    - score: 40
+      match: [portland, beaverton, hillsboro]
+    - score: 35
+      match: [orlando, tampa]
+    - score: 30
+      match: [los angeles, san diego, irvine, pasadena, santa monica, burbank, el segundo]
+    - score: 25
+      match: [remote, remote - us, united states]
+  # Anything not matching a tier scores 0 rather than being dropped —
+  # a strong role in an unlisted city still surfaces, just lower.
+
+# Years-of-experience parsed from the description.
+experience:
+  max_years: 2                # above this, penalize
+  penalty_per_year: 15
+
+# Minimum total score to appear in the ranked output.
+min_score: 20
