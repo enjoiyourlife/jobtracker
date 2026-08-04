@@ -1,0 +1,86 @@
+# ─────────────────────────────────────────────────────────────
+# Projects — richer detail than a resume bullet allows.
+#
+# These feed the answer-tailoring step: when a posting asks about a
+# challenging project, the variant whose `tech` best overlaps the job
+# description is selected. Specificity is the point — "solved a race
+# condition in the upsert path" survives a follow-up question in an
+# interview; "worked on the backend" does not.
+#
+# Copy this directory to profile/ and replace with your own.
+# ─────────────────────────────────────────────────────────────
+
+projects:
+  - id: example-pipeline
+    name: Multi-Source Data Pipeline
+    role: Solo
+    period: 2026
+    tech: [python, sqlite, rest-apis, pytest, http]
+
+    # One sentence. What is it and who is it for.
+    summary: >
+      A pipeline that ingests job postings from three applicant tracking
+      systems, normalizes them into a single schema, and ranks them
+      against configurable criteria.
+
+    # What YOU built. Named components, not team accomplishments.
+    contributions:
+      - Designed the persistence layer with idempotent upserts keyed on a
+        synthetic cross-source identifier.
+      - Built three API clients behind a shared protocol so a new source
+        requires no change to the orchestration layer.
+      - Wrote a 76-case test suite covering parser contracts and
+        persistence invariants.
+
+    # The specific hard thing. This is what gets asked about.
+    challenge: >
+      Distinguishing a posting that closed from one missed by a failed
+      poll. Both look identical — the record is simply absent from the
+      response. Conflating them would silently mark an entire company's
+      postings as closed after one network error.
+
+    resolution: >
+      Separated the two signals into different columns: one recording
+      when our poller last saw the posting, one recording confirmed
+      closure, with closure only written by a run that completed
+      successfully. Added a guard rejecting empty result sets, since an
+      empty board is far more likely to be a bad slug than a company
+      closing every role at once.
+
+    # Quantified where honest. Omit rather than invent.
+    outcome: >
+      Reduced 1,778 raw postings to 23 relevant matches per run.
+
+    links:
+      repo: https://github.com/yourname/yourproject
+
+  - id: example-simulation
+    name: Browser-Based Simulation
+    role: Team of 4 — owned the simulation layer
+    period: 2026
+    tech: [typescript, react, three.js, webgl]
+
+    summary: >
+      A real-time ecosystem simulator rendering thousands of agents in
+      the browser.
+
+    contributions:
+      - Implemented the disease model governing agent state transitions.
+      - Defined the data contract between the simulation layer and a
+        teammate's GPU rendering pipeline.
+
+    challenge: >
+      The rendering layer stored agent state as floats in a GPU texture
+      while the simulation layer used typed objects, so the same
+      properties existed in two incompatible representations.
+
+    resolution: >
+      Established a single explicit contract for the shared fields and
+      kept simulation-only state out of the texture entirely, which
+      removed the ambiguity about which layer owned each property.
+
+    outcome: >
+      Sustained 60fps with 1,000 concurrent agents.
+
+    links:
+      repo: https://github.com/yourname/simulation

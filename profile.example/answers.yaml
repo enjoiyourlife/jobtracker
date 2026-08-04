@@ -1,0 +1,95 @@
+# ─────────────────────────────────────────────────────────────
+# Answer bank — your paragraphs, in your voice.
+#
+# Multiple variants per question. At apply time the variant whose
+# `use_when` tags best match the posting is selected and adapted to
+# that specific job — company name, emphasized skills, matched
+# keywords. The wording stays yours; only the targeting changes.
+#
+# Write these once, properly. They are reused across every application.
+# ─────────────────────────────────────────────────────────────
+
+# Fields that never need tailoring. Copied verbatim.
+boilerplate:
+  work_authorization: "Authorized to work in the US without sponsorship."
+  sponsorship_required: "No"
+  relocation: "Willing to relocate for the right role."
+  notice_period: "Available immediately."
+  salary_expectation: "Open to discussing a range aligned with the role and market."
+  referral_source: "Company careers page"
+
+questions:
+
+  # ── Why this company ────────────────────────────────────────
+  - id: why_company
+    prompts:                       # phrasings this variant answers
+      - why do you want to work here
+      - why are you interested in this company
+      - what interests you about us
+    variants:
+      - id: why_company_product
+        use_when: [consumer, product, saas]
+        text: >
+          Replace with two to four sentences on what draws you to this
+          kind of company. Leave a placeholder for the specific detail
+          the tailoring step will fill in — a product you have used, a
+          technical decision they have written about.
+
+      - id: why_company_infra
+        use_when: [infrastructure, platform, developer-tools]
+        text: >
+          A second variant for infrastructure and tooling companies,
+          where the honest answer is usually about the problem domain
+          rather than the product surface.
+
+  # ── Challenging project ─────────────────────────────────────
+  - id: challenging_project
+    prompts:
+      - describe a challenging project
+      - tell us about a technical challenge
+      - what is a project you are proud of
+    variants:
+      - id: project_backend
+        use_when: [python, backend, api, data, sql]
+        project_ref: example-pipeline    # pulls detail from projects.yaml
+        text: >
+          Your version of the pipeline story. Lead with the specific
+          problem, not the project description. Keep it to roughly 150
+          words — the challenge, what you tried, what worked, what it
+          taught you.
+
+      - id: project_frontend
+        use_when: [typescript, react, frontend, ui]
+        project_ref: example-simulation
+        text: >
+          Your version of the frontend story, same structure.
+
+  # ── Why this role ───────────────────────────────────────────
+  - id: why_role
+    prompts:
+      - why are you interested in this position
+      - what appeals to you about this role
+    variants:
+      - id: why_role_swe
+        use_when: [software-engineer, backend, full-stack]
+        text: >
+          Your answer for general software engineering roles.
+
+      - id: why_role_sdet
+        use_when: [sdet, qa, automation, test]
+        text: >
+          Your answer for test and automation roles. If your background
+          is genuinely in QA, this variant should say so directly —
+          it is a strength here, not a detour.
+
+  # ── About you ───────────────────────────────────────────────
+  - id: about_you
+    prompts:
+      - tell us about yourself
+      - introduce yourself
+    variants:
+      - id: about_default
+        use_when: []               # empty means it always applies
+        text: >
+          Three or four sentences. Where you are now, what you build,
+          what you are looking for. No life story.

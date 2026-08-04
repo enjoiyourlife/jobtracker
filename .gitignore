@@ -6,3 +6,4 @@ data/*.db
 .DS_Store
 .env
 *.egg-info/
+profile/
