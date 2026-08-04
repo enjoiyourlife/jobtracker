@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import html
 import json
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+
+from jobtracker.ats.base import ATSError, RawJob
 
 ATS_NAME = "greenhouse"
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
@@ -24,26 +24,8 @@ USER_AGENT = "jobtracker/0.1 (personal job search tool)"
 TIMEOUT_SECONDS = 30.0
 
 
-class GreenhouseError(RuntimeError):
+class GreenhouseError(ATSError):
     """Raised when a board cannot be fetched or its payload is malformed."""
-
-
-@dataclass(frozen=True)
-class RawJob:
-    """
-    One normalized posting, pre-persistence.
-
-    Frozen because a parsed posting is a value, not mutable state —
-    anything wanting a variant constructs a new one.
-    """
-    global_id: str
-    ats_job_id: str
-    title: str
-    location: str | None
-    absolute_url: str
-    description: str | None
-    updated_at: str | None
-    raw_payload: str
 
 
 def _strip_html(raw: str) -> str:
@@ -58,12 +40,8 @@ def fetch(slug: str, *, client: httpx.Client | None = None) -> dict[str, Any]:
     """
     Retrieve a board's raw JSON payload.
 
-    Args:
-        slug: Greenhouse board token (e.g. "stripe").
-        client: Optional shared client, for connection reuse across boards.
-
     Raises:
-        GreenhouseError: on any network failure, non-2xx status, or invalid JSON.
+        GreenhouseError: on network failure, non-2xx status, or invalid JSON.
     """
     url = BASE_URL.format(slug=slug)
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
@@ -93,9 +71,6 @@ def parse(payload: dict[str, Any], slug: str) -> list[RawJob]:
 
     Malformed individual postings are skipped rather than aborting the
     batch: one bad row should not cost us the other 546.
-
-    Raises:
-        GreenhouseError: if the payload itself lacks a 'jobs' list.
     """
     jobs = payload.get("jobs")
     if not isinstance(jobs, list):
@@ -110,7 +85,6 @@ def parse(payload: dict[str, Any], slug: str) -> list[RawJob]:
         except (KeyError, TypeError):
             continue  # required field absent — skip this posting
 
-        # location is a nested object, and may be null entirely
         location_obj = entry.get("location") or {}
         location = location_obj.get("name") if isinstance(location_obj, dict) else None
 
@@ -131,3 +105,13 @@ def parse(payload: dict[str, Any], slug: str) -> list[RawJob]:
         )
 
     return parsed
+
+
+def company_name(parsed: list[RawJob], slug: str) -> str:
+    """Greenhouse carries company_name per posting rather than board-level."""
+    if not parsed:
+        return slug
+    try:
+        return json.loads(parsed[0].raw_payload).get("company_name") or slug
+    except (json.JSONDecodeError, AttributeError):
+        return slug

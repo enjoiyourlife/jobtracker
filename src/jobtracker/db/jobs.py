@@ -11,6 +11,9 @@ Upsert semantics, keyed on jobs.global_id:
 That last rule is why closures are only ever applied from a run we
 know completed. A crashed poller sees nothing; that is not evidence
 a job closed.
+
+Depends on the shared RawJob contract rather than any single ATS
+client, so a new source requires no change here.
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 
-from jobtracker.ats.greenhouse import RawJob
+from jobtracker.ats.base import RawJob
 
 
 def utc_now() -> str:

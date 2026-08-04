@@ -1,16 +1,24 @@
 # ─────────────────────────────────────────────────────────────
 # jobtracker search criteria
-# Edit this file, rerun the filter. No code changes required.
+# Edit this file, rerun the poller. No code changes required.
 #
 # Matching is case-insensitive substring on the job title unless
 # noted. Order of evaluation: exclude wins, then include, then
 # anything left over lands in "unclassified" for weekly review.
 # ─────────────────────────────────────────────────────────────
 
+# Boards to poll, grouped by ATS. Use `python -m jobtracker.resolver`
+# to find Greenhouse slugs from company names.
 boards:
   greenhouse:
     - stripe
     - figma
+    - databricks
+    - discord
+  lever:
+    - matchgroup
+  ashby:
+    - ramp
 
 role:
   # A title matching any of these is a candidate coding role.
