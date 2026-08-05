@@ -49,6 +49,7 @@ def _scored_jobs(conn: sqlite3.Connection, criteria: Criteria) -> dict[int, int]
 def cmd_queue(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     criteria = Criteria.load()
     entries = apps.queue(conn, _scored_jobs(conn, criteria), limit=args.limit)
+    apps.save_snapshot(conn, entries)
 
     if not entries:
         print("Queue empty. Poll for new postings or lower min_score.")
@@ -59,7 +60,6 @@ def cmd_queue(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         print(f"{i:>3}. [{e.score:>3}] {e.title}")
         print(f"      {e.company} · {location}")
         print(f"      {e.url}")
-        print(f"      job_id={e.job_id}")
     print(f"\n{len(entries)} awaiting decision")
     return 0
 
@@ -68,30 +68,39 @@ def cmd_apply(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     """
     Open a posting and queue it.
 
+    Takes a queue position, not a job_id — resolved against the snapshot
+    the last `queue` call saved, so it acts on exactly what was printed
+    rather than a freshly recomputed ranking. `mark`, by contrast, still
+    takes job_id: applications are acted on again days or weeks later,
+    long after any queue snapshot that produced a position number is
+    gone, so job_id is the only reference still meaningful by then. This
+    command prints that job_id for the follow-up `mark` call.
+
     The browser is opened rather than the form submitted: every ATS puts
     its own questions, uploads, and anti-bot checks on the apply page,
     and submitting programmatically would violate their terms and risk
     the account. This is the handoff point between automation and you.
     """
+    job_id = apps.resolve_position(conn, args.position)
+    if job_id is None:
+        print(f"No position {args.position} in the last queue. Run `jobtracker queue` again.")
+        return 1
+
     row = conn.execute(
         """
         SELECT j.absolute_url, j.title, c.name AS company
           FROM jobs j JOIN companies c ON c.id = j.company_id
          WHERE j.id = ?
         """,
-        (args.job_id,),
+        (job_id,),
     ).fetchone()
 
-    if row is None:
-        print(f"No job with id {args.job_id}")
-        return 1
-
-    apps.add(conn, args.job_id, score=args.score)
+    apps.add(conn, job_id, score=args.score)
     conn.commit()
 
     print(f"Queued: {row['title']} at {row['company']}")
     print(f"Opening {row['absolute_url']}")
-    print("Once submitted:  jobtracker mark", args.job_id, "submitted")
+    print("Once submitted:  jobtracker mark", job_id, "submitted")
     webbrowser.open(row["absolute_url"])
     return 0
 
@@ -176,7 +185,7 @@ def main() -> int:
     p_queue.set_defaults(func=cmd_queue)
 
     p_apply = sub.add_parser("apply", help="open a posting and queue it")
-    p_apply.add_argument("job_id", type=int)
+    p_apply.add_argument("position", type=int, help="position from the last `queue` listing")
     p_apply.add_argument("--score", type=int, default=None)
     p_apply.set_defaults(func=cmd_apply)
 

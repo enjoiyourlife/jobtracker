@@ -8,13 +8,24 @@
 # ─────────────────────────────────────────────────────────────
 
 # Boards to poll, grouped by ATS. Use `python -m jobtracker.resolver`
-# to find Greenhouse slugs from company names.
+# to find slugs from company names.
 boards:
   greenhouse:
     - stripe
     - figma
     - databricks
     - discord
+    - cloudflare
+    - reddit
+    - twilio
+    - coinbase
+    - asana
+    - robinhood
+    - instacart
+    - smartsheet
+    - chime
+    - airtable
+    - vacasa
   lever:
     - matchgroup
   ashby:
@@ -69,6 +80,7 @@ role:
     - product manager
     - technical program manager
     - engineering intern      # remove this line if internships are wanted
+    - internship              # catches "Software Engineer Internship, ..." too
     - principal
     - staff engineer
     - staff software
@@ -109,6 +121,49 @@ location:
       match: [los angeles, san diego, irvine, pasadena, santa monica, burbank, el segundo]
     - score: 25
       match: [remote, remote - us, united states]
+      # "remote" alone is too loose — it also matches "Remote (Bulgaria)".
+      # Country-scoped remote roles hit one of these and fall through to
+      # whatever tier legitimately applies (usually none, i.e. score 0)
+      # instead of taking the US-remote score. Add to this list as new
+      # non-US countries show up in the queue.
+      exclude:
+        - argentina
+        - brazil
+        - canada
+        - mexico
+        - colombia
+        - chile
+        - peru
+        - uk
+        - united kingdom
+        - ireland
+        - portugal
+        - spain
+        - france
+        - germany
+        - netherlands
+        - poland
+        - romania
+        - bulgaria
+        - ukraine
+        - india
+        - pakistan
+        - philippines
+        - singapore
+        - australia
+        - new zealand
+        - japan
+        - china
+        - south korea
+        - vietnam
+        - indonesia
+        - nigeria
+        - kenya
+        - south africa
+        - egypt
+        - uae
+        - israel
+        - turkey
   # Anything not matching a tier scores 0 rather than being dropped —
   # a strong role in an unlisted city still surfaces, just lower.
 

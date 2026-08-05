@@ -11,6 +11,7 @@ alone.
 from __future__ import annotations
 
 from jobtracker.ats.base import RawJob
+from jobtracker.db import applications as apps
 from jobtracker.db import jobs as repo
 
 
@@ -148,3 +149,61 @@ class TestClosure:
             "SELECT closed_at FROM jobs WHERE global_id = 'greenhouse:other:2'"
         ).fetchone()
         assert row["closed_at"] is None
+
+
+def make_entry(job_id: int, **kw) -> apps.QueueEntry:
+    """Minimal QueueEntry for tests; overrides via kwargs."""
+    defaults = dict(
+        job_id=job_id,
+        global_id=f"greenhouse:acme:{job_id}",
+        company="Acme",
+        title="Software Engineer",
+        location="Seattle, WA",
+        url=f"https://example.com/{job_id}",
+        score=50,
+        posted_at=None,
+    )
+    defaults.update(kw)
+    return apps.QueueEntry(**defaults)
+
+
+class TestQueueSnapshot:
+    """
+    save_snapshot/resolve_position back `jobtracker apply <position>`.
+
+    queue_snapshot.job_id has a foreign key to jobs, so tests upsert real
+    job rows rather than inventing ids — an invented id would fail the
+    same constraint production data must satisfy.
+    """
+
+    def _job_ids(self, db, n: int) -> list[int]:
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job(str(i)) for i in range(1, n + 1)])
+        return [r["id"] for r in db.execute("SELECT id FROM jobs ORDER BY id")]
+
+    def test_resolves_saved_position(self, db):
+        j1, j2 = self._job_ids(db, 2)
+        apps.save_snapshot(db, [make_entry(j1), make_entry(j2)])
+
+        assert apps.resolve_position(db, 1) == j1
+        assert apps.resolve_position(db, 2) == j2
+
+    def test_unknown_position_returns_none(self, db):
+        (j1,) = self._job_ids(db, 1)
+        apps.save_snapshot(db, [make_entry(j1)])
+
+        assert apps.resolve_position(db, 99) is None
+
+    def test_replaces_previous_snapshot(self, db):
+        """
+        Only the most recently printed queue should resolve. Without
+        this, applying to position 1 twice across two `queue` runs could
+        silently apply to two different jobs that both happened to land
+        at position 1 — the exact staleness `apply` is meant to avoid.
+        """
+        j1, j2, j3 = self._job_ids(db, 3)
+        apps.save_snapshot(db, [make_entry(j1), make_entry(j2)])
+        apps.save_snapshot(db, [make_entry(j3)])
+
+        assert apps.resolve_position(db, 1) == j3
+        assert apps.resolve_position(db, 2) is None

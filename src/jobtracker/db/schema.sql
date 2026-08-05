@@ -79,3 +79,14 @@ CREATE TABLE IF NOT EXISTS applications (
 CREATE INDEX IF NOT EXISTS idx_apps_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_apps_submitted ON applications(submitted_at)
     WHERE submitted_at IS NOT NULL;
+
+-- The queue positions shown by the last `jobtracker queue` run.
+-- Overwritten wholesale on every run — only the latest listing is kept.
+-- `apply <position>` resolves against this table rather than
+-- recomputing rankings, so it acts on exactly what was displayed
+-- instead of a live query that may have shifted since.
+CREATE TABLE IF NOT EXISTS queue_snapshot (
+    position   INTEGER NOT NULL PRIMARY KEY,
+    job_id     INTEGER NOT NULL REFERENCES jobs(id),
+    created_at TEXT    NOT NULL
+);

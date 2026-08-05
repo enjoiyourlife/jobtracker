@@ -83,6 +83,15 @@ class TestClassification:
 
     @pytest.mark.parametrize(
         "title",
+        ["Software Engineer Internship, Android", "Engineering Intern"],
+    )
+    def test_internships_excluded(self, title, crit):
+        """'Engineering Intern' and 'Internship' are different substrings —
+        both need their own exclude entry, or one phrasing slips through."""
+        assert classify(title, crit) is Classification.EXCLUDE
+
+    @pytest.mark.parametrize(
+        "title",
         [
             "Manager, Software Engineering - Payload",
             "Staff Software Engineer - Money Team",
@@ -171,3 +180,26 @@ class TestScoring:
         junior_local = score("Software Engineer, New Grad", "Seattle, WA", None, crit)
         senior_remote = score("Senior Software Engineer", "Remote", "8+ years", crit)
         assert junior_local.total > senior_remote.total
+
+    def test_abbreviated_senior_title_penalized(self, crit):
+        """
+        Regression: `\\b` never matches right after 'sr.' because both
+        sides of that position are non-word characters ('.' and the
+        space after it), so the penalty silently never applied to
+        titles using the abbreviation instead of the full word.
+        """
+        assert score("Sr. Software Engineer", "Seattle, WA", None, crit).seniority < 0
+
+    def test_country_scoped_remote_does_not_score_as_us_remote(self, crit):
+        """
+        Regression: 'remote' is a plain substring match, so
+        'Remote (Buenos Aires, Argentina)' scored the same +25 as a
+        genuine US-remote posting.
+        """
+        s = score("Software Engineer", "Remote (Buenos Aires, Argentina)", None, crit)
+        assert s.location == 0
+
+    def test_plain_remote_still_scores(self, crit):
+        """The exclude list must veto country-scoped remote without
+        breaking the common case of an unqualified 'Remote'."""
+        assert score("Software Engineer", "Remote", None, crit).location > 0

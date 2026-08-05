@@ -69,7 +69,7 @@ class Criteria:
     role_exclude: tuple[str, ...]
     seniority_preferred: tuple[str, ...]
     seniority_penalized: tuple[str, ...]
-    location_tiers: tuple[tuple[int, tuple[str, ...]], ...]
+    location_tiers: tuple[tuple[int, tuple[str, ...], tuple[str, ...]], ...]
     max_years: int
     penalty_per_year: int
     min_score: int
@@ -97,11 +97,13 @@ class Criteria:
         if not role.get("include"):
             raise ConfigError("config.yaml: role.include must be a non-empty list")
 
-        tiers: list[tuple[int, tuple[str, ...]]] = []
+        tiers: list[tuple[int, tuple[str, ...], tuple[str, ...]]] = []
         for tier in raw["location"].get("tiers", []):
-            tiers.append(
-                (int(tier["score"]), tuple(_lower(t) for t in tier["match"]))
-            )
+            tiers.append((
+                int(tier["score"]),
+                tuple(_lower(t) for t in tier["match"]),
+                tuple(_lower(t) for t in tier.get("exclude", [])),
+            ))
 
         boards = {
             ats: tuple(slugs or ())
@@ -129,6 +131,24 @@ def _lower(value: Any) -> str:
     return str(value).strip().lower()
 
 
+def _bounded_pattern(term: str) -> str:
+    """
+    Word-boundary regex for a short term, tolerant of trailing punctuation.
+
+    `\\b` only fires between a word char and a non-word char, so a term
+    like "sr." breaks it: the boundary right after the period sits
+    between two non-word characters ('.' and the space that follows),
+    and `\\b` never matches there. Terms are checked lowercased, so the
+    only realistic punctuation is a trailing period ("sr.") — this drops
+    to a whitespace/end lookahead on whichever side isn't a word
+    character, instead of demanding an impossible word/non-word boundary.
+    """
+    escaped = re.escape(term)
+    left = r"\b" if term[0].isalnum() else r"(?<!\S)"
+    right = r"\b" if term[-1].isalnum() else r"(?!\S)"
+    return f"{left}{escaped}{right}"
+
+
 def _contains_term(haystack: str, terms: tuple[str, ...]) -> str | None:
     """
     Return the first term present in haystack, or None.
@@ -139,7 +159,7 @@ def _contains_term(haystack: str, terms: tuple[str, ...]) -> str | None:
     """
     for term in terms:
         if len(term) <= 3:
-            if re.search(rf"\b{re.escape(term)}\b", haystack):
+            if re.search(_bounded_pattern(term), haystack):
                 return term
         elif term in haystack:
             return term
@@ -196,11 +216,19 @@ def score(
 
     location_pts = 0
     loc_lower = (location or "").lower()
-    for tier_score, terms in criteria.location_tiers:
-        if hit := _contains_term(loc_lower, terms):
-            location_pts = tier_score
-            reasons.append(f"location: '{hit}' (+{tier_score})")
-            break
+    for tier_score, terms, excludes in criteria.location_tiers:
+        hit = _contains_term(loc_lower, terms)
+        if not hit:
+            continue
+        # A tier can match and still be vetoed — "Remote (Bulgaria)" hits
+        # the bare "remote" term but isn't the US-remote role it's being
+        # scored against, so it falls through to whatever tier (if any)
+        # legitimately applies instead of taking the US-remote score.
+        if excludes and _contains_term(loc_lower, excludes):
+            continue
+        location_pts = tier_score
+        reasons.append(f"location: '{hit}' (+{tier_score})")
+        break
 
     experience_pts = 0
     years = extract_years(description)

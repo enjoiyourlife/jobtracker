@@ -104,6 +104,33 @@ def queue(
     return entries[:limit]
 
 
+def save_snapshot(conn: sqlite3.Connection, entries: list[QueueEntry]) -> None:
+    """
+    Persist the exact listing `queue` just printed.
+
+    `apply` resolves position numbers against this table instead of
+    recomputing the ranking, so a number always means "the Nth thing you
+    just looked at" rather than "the Nth thing right now" — those two
+    can differ if new postings landed or an earlier position was already
+    applied to (which removes it from the pool) between the print and
+    the next command.
+    """
+    now = utc_now()
+    conn.execute("DELETE FROM queue_snapshot")
+    conn.executemany(
+        "INSERT INTO queue_snapshot (position, job_id, created_at) VALUES (?, ?, ?)",
+        [(i, e.job_id, now) for i, e in enumerate(entries, 1)],
+    )
+
+
+def resolve_position(conn: sqlite3.Connection, position: int) -> int | None:
+    """job_id for a position in the most recently printed queue, or None."""
+    row = conn.execute(
+        "SELECT job_id FROM queue_snapshot WHERE position = ?", (position,)
+    ).fetchone()
+    return row["job_id"] if row is not None else None
+
+
 def add(
     conn: sqlite3.Connection, job_id: int, score: int | None = None,
     status: str = "queued",
