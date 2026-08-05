@@ -1,0 +1,99 @@
+Affirm
+Airbnb
+Algolia
+Amplitude
+Anduril
+AppLovin
+Applied Intuition
+Attentive
+Benchling
+BetterUp
+Bird
+Block
+Box
+Brex
+Calendly
+Carta
+Cedar
+Checkr
+Cloudflare
+Cockroach Labs
+Coupa
+Cribl
+Crusoe
+Datadog
+Dbt Labs
+Discord
+DigitalOcean
+Dropbox
+Duolingo
+Elastic
+Fastly
+Flexport
+Gemini
+GitLab
+Grammarly
+Grafana Labs
+HashiCorp
+Hinge Health
+Honeycomb
+Hover
+Hugging Face
+Included Health
+Intercom
+Jane Street
+Klaviyo
+Lattice
+LaunchDarkly
+Lucid Software
+Mercury
+Miro
+Modern Treasury
+MongoDB
+Netlify
+Nuro
+Nylas
+Okta
+OpenSea
+Optimizely
+Pendo
+PagerDuty
+Pinterest
+Postman
+Qualtrics
+Quora
+Rippling
+Roblox
+Samsara
+Scale AI
+SeatGeek
+Sentry
+ServiceTitan
+Sigma Computing
+Snyk
+SoFi
+SonderMind
+SpotOn
+Sprig
+Squarespace
+Strava
+Stripe
+Sumo Logic
+Tanium
+Thumbtack
+Tile
+Toast
+Tubi
+Unity
+Upstart
+Vanta
+Vercel
+Verkada
+Via
+Vimeo
+Wealthfront
+Webflow
+Whatnot
+Wiz
+Zapier
+Zscaler
