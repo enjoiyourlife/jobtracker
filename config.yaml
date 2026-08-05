@@ -26,10 +26,98 @@ boards:
     - chime
     - airtable
     - vacasa
+    # resolved via `python -m jobtracker.resolver --file companies.txt`
+    - datadog
+    - mongodb
+    - okta
+    - zscaler
+    - brex
+    - toast
+    - samsara
+    - verkada
+    - elastic
+    - janestreet          # Jane Street
+    - pinterest
+    - roblox
+    - scaleai             # Scale AI
+    - block
+    - airbnb
+    - gitlab
+    - affirm
+    - via
+    - flexport
+    - klaviyo
+    - grafanalabs         # Grafana Labs
+    - intercom
+    - postman
+    - nuro
+    - upstart
+    - vercel
+    - sigmacomputing      # Sigma Computing
+    - cribl
+    - duolingo
+    - sofi
+    - carta
+    - mercury
+    - qualtrics
+    - fastly
+    - checkr
+    - gemini
+    - attentive
+    - amplitude
+    - algolia
+    - lucidsoftware       # Lucid Software
+    - tanium
+    - dropbox
+    - pendo
+    - launchdarkly
+    - bird
+    - webflow
+    - cockroachlabs       # Cockroach Labs
+    - seatgeek
+    - applovin            # AppLovin
+    - sumologic           # Sumo Logic
+    - hover
+    - pagerduty
+    - honeycomb
+    - squarespace
+    - calendly
+    - lattice
+    - netlify
   lever:
     - matchgroup
+    # resolved via `python -m jobtracker.resolver --file companies.txt`
+    - includedhealth      # Included Health
+    - coupa
+    - wealthfront
   ashby:
     - ramp
+    # resolved via `python -m jobtracker.resolver --file companies.txt`
+    - crusoe
+    - applied             # Applied Intuition
+    - sondermind          # SonderMind
+    - vanta
+    - hinge-health        # Hinge Health
+    - spoton              # SpotOn
+    - benchling
+    - thumbtack
+    - sentry
+    - miro
+    - betterup            # BetterUp
+    - strava
+    - zapier
+    - nylas
+    - moderntreasury      # Modern Treasury
+    - quora
+    - cedar
+    - sprig
+    - opensea             # OpenSea
+
+# 17 companies from companies.txt didn't resolve on Greenhouse, Lever,
+# or Ashby and need manual lookup (Workday, custom career sites, etc.):
+# Anduril, Box, Dbt Labs, DigitalOcean, Grammarly, HashiCorp,
+# Hugging Face, Optimizely, Rippling, ServiceTitan, Snyk, Tile, Tubi,
+# Unity, Vimeo, Whatnot, Wiz.
 
 role:
   # A title matching any of these is a candidate coding role.

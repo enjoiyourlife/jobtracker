@@ -1,14 +1,19 @@
 """
 Board slug resolver.
 
-Mapping a company name to its Greenhouse board token is the tedious
-part of building a target list: the token is usually a lowercased,
+Mapping a company name to its board token is the tedious part of
+building a target list: the token is usually a lowercased,
 punctuation-stripped name, but often is not ("Hewlett Packard" ->
 "hpe", "Airbnb" -> "airbnb", "Chan Zuckerberg Initiative" -> "czi").
+And the same company might be on Greenhouse, Lever, or Ashby — there's
+no way to know without asking each.
 
-Rather than guess in a browser, generate candidate slugs, probe each
-against the live board endpoint, and report the first that responds.
-Unresolved names are returned separately for manual lookup.
+Rather than guess in a browser, generate candidate slugs and probe
+each against every registered ATS's real fetch(), in the order they
+appear in the registry. Reusing fetch() rather than reimplementing the
+HTTP call means a probe's notion of "not found" never drifts from the
+poller's — the same 404/soft-failure handling each client already has
+is exactly what decides a miss here.
 
 Usage:
     python -m jobtracker.resolver "Zillow" "Remitly" "Nordstrom"
@@ -25,12 +30,14 @@ from dataclasses import dataclass
 
 import httpx
 
-from jobtracker.ats.greenhouse import BASE_URL, USER_AGENT
+from jobtracker.ats import REGISTRY
+from jobtracker.ats.base import ATSError
 
 # Courtesy delay between probes. These are public endpoints, but there
 # is no reason to hammer them — this is a background task, not a race.
 PROBE_DELAY_SECONDS = 0.3
 PROBE_TIMEOUT_SECONDS = 10.0
+USER_AGENT = "jobtracker/0.1 (personal job search tool)"
 
 _PUNCT = re.compile(r"[^a-z0-9\s]")
 _SUFFIXES = (" inc", " llc", " ltd", " corp", " corporation", " co", " technologies")
@@ -40,7 +47,8 @@ _SUFFIXES = (" inc", " llc", " ltd", " corp", " corporation", " co", " technolog
 class Resolution:
     """Outcome of probing one company name."""
     name: str
-    slug: str | None
+    ats: str | None = None
+    slug: str | None = None
     job_count: int = 0
 
     @property
@@ -77,49 +85,56 @@ def candidates(name: str) -> list[str]:
     return [f for f in forms if f and not (f in seen or seen.add(f))]
 
 
-def probe(slug: str, client: httpx.Client) -> int | None:
+def probe(ats_name: str, slug: str, client: httpx.Client) -> int | None:
     """
-    Test one slug. Returns the board's job count, or None if it is not
-    a live Greenhouse board.
+    Test one (ats, slug) pair via that ATS's own fetch(). Returns the
+    board's job count, or None if it is not a live board on that ATS.
 
-    A 200 carrying an empty 'jobs' list is treated as a miss: an existing
-    board with zero postings is indistinguishable here from a wrong guess,
-    and a false positive would poison the target list.
+    A response carrying zero jobs is treated as a miss: an existing
+    board with no postings is indistinguishable here from a wrong
+    guess, and a false positive would poison the target list.
     """
     try:
-        response = client.get(
-            BASE_URL.format(slug=slug),
-            params={"content": "false"},
-            timeout=PROBE_TIMEOUT_SECONDS,
-        )
-        if response.status_code != 200:
-            return None
-        jobs = response.json().get("jobs")
-        return len(jobs) if jobs else None
-    except (httpx.RequestError, ValueError):
+        payload = REGISTRY[ats_name].fetch(slug, client=client)
+    except (ATSError, httpx.RequestError):
         return None
+    jobs = payload.get("jobs")
+    return len(jobs) if jobs else None
 
 
-def resolve(name: str, client: httpx.Client) -> Resolution:
-    """Probe each candidate slug for a name; first hit wins."""
+def resolve(name: str, clients: dict[str, httpx.Client]) -> Resolution:
+    """
+    Probe each candidate slug for a name across every registered ATS;
+    first hit wins. Slugs are tried before ATSes are alternated — a
+    company is far more likely to be on one ATS under several plausible
+    tokens than on several ATSes under the same token.
+    """
     for slug in candidates(name):
-        count = probe(slug, client)
-        time.sleep(PROBE_DELAY_SECONDS)
-        if count is not None:
-            return Resolution(name=name, slug=slug, job_count=count)
-    return Resolution(name=name, slug=None)
+        for ats_name, client in clients.items():
+            count = probe(ats_name, slug, client)
+            time.sleep(PROBE_DELAY_SECONDS)
+            if count is not None:
+                return Resolution(name=name, ats=ats_name, slug=slug, job_count=count)
+    return Resolution(name=name)
 
 
 def resolve_all(names: list[str]) -> list[Resolution]:
-    """Resolve a batch over one reused connection."""
+    """Resolve a batch, reusing one connection per ATS across all names."""
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-    with httpx.Client(headers=headers) as client:
-        return [resolve(n, client) for n in names]
+    clients = {
+        ats_name: httpx.Client(timeout=PROBE_TIMEOUT_SECONDS, headers=headers)
+        for ats_name in REGISTRY
+    }
+    try:
+        return [resolve(n, clients) for n in names]
+    finally:
+        for client in clients.values():
+            client.close()
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Resolve company names to Greenhouse board slugs."
+        description="Resolve company names to board slugs across Greenhouse, Lever, and Ashby."
     )
     parser.add_argument("names", nargs="*", help="Company names")
     parser.add_argument("--file", help="Text file with one company name per line")
@@ -137,9 +152,16 @@ def main() -> int:
     found = [r for r in results if r.resolved]
     missing = [r for r in results if not r.resolved]
 
-    print("# paste into config.yaml under boards.greenhouse")
-    for r in sorted(found, key=lambda r: -r.job_count):
-        print(f"    - {r.slug}    # {r.name} ({r.job_count} jobs)")
+    print("# paste into config.yaml under boards.<ats> — grouped below")
+    for ats_name in REGISTRY:
+        group = sorted(
+            (r for r in found if r.ats == ats_name), key=lambda r: -r.job_count
+        )
+        if not group:
+            continue
+        print(f"\n# {ats_name}:")
+        for r in group:
+            print(f"    - {r.slug}    # {r.name} ({r.job_count} jobs)")
 
     if missing:
         print(f"\n# unresolved ({len(missing)}) — find these manually", file=sys.stderr)
