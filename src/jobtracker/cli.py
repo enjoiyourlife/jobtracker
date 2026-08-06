@@ -12,6 +12,7 @@ Commands:
     status   pipeline counts and ghosted submissions
     review   postings the classifier could not categorize
     tailor   answer-bank responses retargeted to one posting
+    browse   interactive queue — arrow keys, a to apply, s to skip
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ import webbrowser
 import anthropic
 from dotenv import load_dotenv
 
+from jobtracker.browse import browse
 from jobtracker.db import applications as apps
 from jobtracker.db.connection import session
 from jobtracker.filters import Classification, Criteria, classify, score
@@ -249,6 +251,26 @@ def cmd_tailor(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_browse(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """
+    Interactive queue — no position numbers, no job_ids.
+
+    Reuses the same ranking `queue` prints; the difference is entirely
+    in how you act on it. Applying or skipping updates the database
+    immediately (not batched at exit), so quitting early never loses a
+    decision already made.
+    """
+    criteria = Criteria.load()
+    entries = apps.queue(conn, _scored_jobs(conn, criteria), limit=args.limit)
+    if not entries:
+        print("Queue empty. Poll for new postings or lower min_score.")
+        return 0
+
+    applied, skipped = browse(conn, entries)
+    print(f"Applied to {applied}, skipped {skipped}.")
+    return 0
+
+
 def main() -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(prog="jobtracker")
@@ -284,6 +306,12 @@ def main() -> int:
     p_tailor = sub.add_parser("tailor", help="answer-bank responses retargeted to one posting")
     p_tailor.add_argument("position", type=int, help="position from the last `queue` listing")
     p_tailor.set_defaults(func=cmd_tailor)
+
+    p_browse = sub.add_parser(
+        "browse", help="interactive queue — arrow keys, a to apply, s to skip"
+    )
+    p_browse.add_argument("--limit", type=int, default=100)
+    p_browse.set_defaults(func=cmd_browse)
 
     args = parser.parse_args()
     with session() as conn:
