@@ -183,8 +183,14 @@ seniority:
     - associate
     - new grad
     - new graduate
+    - new college grad
+    - recent grad
+    - recent graduate
     - university grad
     - entry level
+    - early career
+    - early in career
+    - class of 20                # matches "class of 2026", "class of 2027", ...
     - "i"
     - "1"
   neutral: 0                  # no seniority marker at all

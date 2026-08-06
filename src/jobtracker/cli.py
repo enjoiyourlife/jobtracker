@@ -32,11 +32,20 @@ from jobtracker.filters import Classification, Criteria, classify, score
 from jobtracker.tailor import Profile, ProfileError, TailorError, select_variant, tailor_answer
 
 
-def _scored_jobs(conn: sqlite3.Connection, criteria: Criteria) -> dict[int, int]:
+def _scored_jobs(
+    conn: sqlite3.Connection, criteria: Criteria, *, entry_level_only: bool = False
+) -> dict[int, int]:
     """
     Score every open posting that classifies as a coding role.
 
     Returns job_id -> score for those at or above min_score.
+
+    entry_level_only additionally requires the seniority dimension to
+    have scored positively — i.e. the title matched one of
+    seniority.preferred (junior, new grad, "I", early career, ...) in
+    config.yaml. This reuses that list rather than a separate one, so
+    tuning what counts as "entry level" is still just editing config.yaml
+    and takes effect immediately, with no second list to keep in sync.
     """
     rows = conn.execute(
         "SELECT id, title, location, description FROM jobs WHERE closed_at IS NULL"
@@ -49,14 +58,18 @@ def _scored_jobs(conn: sqlite3.Connection, criteria: Criteria) -> dict[int, int]
         breakdown = score(
             row["title"], row["location"], row["description"], criteria
         )
-        if breakdown.total >= criteria.min_score:
-            result[row["id"]] = breakdown.total
+        if breakdown.total < criteria.min_score:
+            continue
+        if entry_level_only and breakdown.seniority <= 0:
+            continue
+        result[row["id"]] = breakdown.total
     return result
 
 
 def cmd_queue(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     criteria = Criteria.load()
-    entries = apps.queue(conn, _scored_jobs(conn, criteria), limit=args.limit)
+    scored = _scored_jobs(conn, criteria, entry_level_only=args.entry_level)
+    entries = apps.queue(conn, scored, limit=args.limit)
     apps.save_snapshot(conn, entries)
 
     if not entries:
@@ -261,7 +274,8 @@ def cmd_browse(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     decision already made.
     """
     criteria = Criteria.load()
-    entries = apps.queue(conn, _scored_jobs(conn, criteria), limit=args.limit)
+    scored = _scored_jobs(conn, criteria, entry_level_only=args.entry_level)
+    entries = apps.queue(conn, scored, limit=args.limit)
     if not entries:
         print("Queue empty. Poll for new postings or lower min_score.")
         return 0
@@ -278,6 +292,11 @@ def main() -> int:
 
     p_queue = sub.add_parser("queue", help="ranked postings awaiting a decision")
     p_queue.add_argument("--limit", type=int, default=25)
+    p_queue.add_argument(
+        "--entry-level", action="store_true",
+        help="only postings matching seniority.preferred in config.yaml "
+             "(junior, new grad, \"I\", early career, ...)",
+    )
     p_queue.set_defaults(func=cmd_queue)
 
     p_apply = sub.add_parser("apply", help="open a posting and queue it")
@@ -311,6 +330,10 @@ def main() -> int:
         "browse", help="interactive queue — arrow keys, a to apply, s to skip"
     )
     p_browse.add_argument("--limit", type=int, default=100)
+    p_browse.add_argument(
+        "--entry-level", action="store_true",
+        help="only postings matching seniority.preferred in config.yaml",
+    )
     p_browse.set_defaults(func=cmd_browse)
 
     args = parser.parse_args()
