@@ -84,6 +84,14 @@ boards:
     - calendly
     - lattice
     - netlify
+    # resolved manually — not found by the resolver's slug guesser,
+    # tracked down via each company's actual job posting URLs
+    - andurilindustries   # Anduril
+    - boxinc              # Box
+    - tubitv              # Tubi
+    - life360              # Tile (acquired by Life360; board covers both)
+    - wizinc              # Wiz
+    - digitalocean98      # DigitalOcean
   lever:
     - matchgroup
     # resolved via `python -m jobtracker.resolver --file companies.txt`
@@ -113,11 +121,17 @@ boards:
     - sprig
     - opensea             # OpenSea
 
-# 17 companies from companies.txt didn't resolve on Greenhouse, Lever,
-# or Ashby and need manual lookup (Workday, custom career sites, etc.):
-# Anduril, Box, Dbt Labs, DigitalOcean, Grammarly, HashiCorp,
-# Hugging Face, Optimizely, Rippling, ServiceTitan, Snyk, Tile, Tubi,
-# Unity, Vimeo, Whatnot, Wiz.
+# 11 companies from companies.txt are still unresolved after manual
+# lookup, split two ways:
+#   - Different ATS entirely, would need a new client module to add:
+#     Unity, ServiceTitan (Workday), Optimizely (Jobvite),
+#     Hugging Face (Workable)
+#   - Whatnot has a live jobs.ashbyhq.com/whatnot page but its public
+#     posting-api is disabled, so it can't be polled even though it's
+#     technically on Ashby
+#   - No accessible board found at all (may have moved, or use a
+#     private/gated board): dbt Labs, Grammarly, Vimeo, HashiCorp,
+#     Rippling, Snyk
 
 role:
   # A title matching any of these is a candidate coding role.
