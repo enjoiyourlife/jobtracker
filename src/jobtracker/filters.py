@@ -35,6 +35,12 @@ _YOE_PATTERN = re.compile(
     r"(\d+)\s*(?:\+|-\s*\d+)?\s*(?:\+\s*)?(?:years?|yrs?)\b", re.IGNORECASE
 )
 
+# Large enough that no combination of seniority/experience points can
+# offset it, so a disallowed location reliably drops below min_score —
+# an effective veto without adding a second hard-filter mechanism
+# alongside classify().
+DISALLOWED_LOCATION_PENALTY = -1000
+
 
 class Classification(str, Enum):
     MATCH = "match"
@@ -69,7 +75,8 @@ class Criteria:
     role_exclude: tuple[str, ...]
     seniority_preferred: tuple[str, ...]
     seniority_penalized: tuple[str, ...]
-    location_tiers: tuple[tuple[int, tuple[str, ...], tuple[str, ...]], ...]
+    location_tiers: tuple[tuple[int, tuple[str, ...]], ...]
+    location_disallow: tuple[str, ...]
     max_years: int
     penalty_per_year: int
     min_score: int
@@ -97,12 +104,11 @@ class Criteria:
         if not role.get("include"):
             raise ConfigError("config.yaml: role.include must be a non-empty list")
 
-        tiers: list[tuple[int, tuple[str, ...], tuple[str, ...]]] = []
+        tiers: list[tuple[int, tuple[str, ...]]] = []
         for tier in raw["location"].get("tiers", []):
             tiers.append((
                 int(tier["score"]),
                 tuple(_lower(t) for t in tier["match"]),
-                tuple(_lower(t) for t in tier.get("exclude", [])),
             ))
 
         boards = {
@@ -120,6 +126,9 @@ class Criteria:
                 _lower(x) for x in raw["seniority"].get("penalized", [])
             ),
             location_tiers=tuple(tiers),
+            location_disallow=tuple(
+                _lower(x) for x in raw["location"].get("disallow", [])
+            ),
             max_years=int(raw["experience"].get("max_years", 2)),
             penalty_per_year=int(raw["experience"].get("penalty_per_year", 15)),
             min_score=int(raw.get("min_score", 0)),
@@ -200,8 +209,12 @@ def score(
     """
     Rank a posting across three independent dimensions.
 
-    Dimensions never veto — a strong role in an unlisted city scores
-    lower but still appears. Only classify() removes anything.
+    Dimensions never veto in the sense of removing a posting outright —
+    only classify() does that, on title. Location is the one exception
+    to "never veto on merit": a disallowed country isn't a worse fit,
+    it's not legally available, so it's penalized hard enough to always
+    fall below min_score rather than merely scoring low. See
+    DISALLOWED_LOCATION_PENALTY.
     """
     lowered = title.lower()
     reasons: list[str] = []
@@ -216,19 +229,16 @@ def score(
 
     location_pts = 0
     loc_lower = (location or "").lower()
-    for tier_score, terms, excludes in criteria.location_tiers:
-        hit = _contains_term(loc_lower, terms)
-        if not hit:
-            continue
-        # A tier can match and still be vetoed — "Remote (Bulgaria)" hits
-        # the bare "remote" term but isn't the US-remote role it's being
-        # scored against, so it falls through to whatever tier (if any)
-        # legitimately applies instead of taking the US-remote score.
-        if excludes and _contains_term(loc_lower, excludes):
-            continue
-        location_pts = tier_score
-        reasons.append(f"location: '{hit}' (+{tier_score})")
-        break
+    disallowed = _contains_term(loc_lower, criteria.location_disallow)
+    if disallowed:
+        location_pts = DISALLOWED_LOCATION_PENALTY
+        reasons.append(f"location: '{disallowed}' not a US location ({DISALLOWED_LOCATION_PENALTY})")
+    else:
+        for tier_score, terms in criteria.location_tiers:
+            if hit := _contains_term(loc_lower, terms):
+                location_pts = tier_score
+                reasons.append(f"location: '{hit}' (+{tier_score})")
+                break
 
     experience_pts = 0
     years = extract_years(description)

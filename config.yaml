@@ -197,6 +197,51 @@ seniority:
     - "iv"
 
 # Location scoring, matched against the posting's location string.
+# Countries other than the US a posting's location might name. Shared
+# by two different rules below via the YAML anchor, so adding a country
+# here fixes both at once instead of the two lists silently drifting
+# apart. Not a real config section — Criteria.load() only reads the
+# top-level keys it knows about, so this is ignored as data.
+_non_us_countries: &non_us_countries
+  - argentina
+  - brazil
+  - canada
+  - mexico
+  - colombia
+  - chile
+  - peru
+  - uk
+  - united kingdom
+  - ireland
+  - portugal
+  - spain
+  - france
+  - germany
+  - netherlands
+  - poland
+  - romania
+  - bulgaria
+  - ukraine
+  - india
+  - pakistan
+  - philippines
+  - singapore
+  - australia
+  - new zealand
+  - japan
+  - china
+  - south korea
+  - sweden
+  - vietnam
+  - indonesia
+  - nigeria
+  - kenya
+  - south africa
+  - egypt
+  - uae
+  - israel
+  - turkey
+
 location:
   tiers:
     - score: 40
@@ -210,50 +255,15 @@ location:
     - score: 25
       match: [remote, remote - us, united states]
       # "remote" alone is too loose — it also matches "Remote (Bulgaria)".
-      # Country-scoped remote roles hit one of these and fall through to
-      # whatever tier legitimately applies (usually none, i.e. score 0)
-      # instead of taking the US-remote score. Add to this list as new
-      # non-US countries show up in the queue.
-      exclude:
-        - argentina
-        - brazil
-        - canada
-        - mexico
-        - colombia
-        - chile
-        - peru
-        - uk
-        - united kingdom
-        - ireland
-        - portugal
-        - spain
-        - france
-        - germany
-        - netherlands
-        - poland
-        - romania
-        - bulgaria
-        - ukraine
-        - india
-        - pakistan
-        - philippines
-        - singapore
-        - australia
-        - new zealand
-        - japan
-        - china
-        - south korea
-        - vietnam
-        - indonesia
-        - nigeria
-        - kenya
-        - south africa
-        - egypt
-        - uae
-        - israel
-        - turkey
+      # No exclude needed here: location.disallow below already catches
+      # any non-US-country location before tiers are even considered.
   # Anything not matching a tier scores 0 rather than being dropped —
-  # a strong role in an unlisted city still surfaces, just lower.
+  # a strong role in an unlisted city still surfaces, just lower. That
+  # principle stops at work authorization, though: a posting whose
+  # location names a non-US country isn't "lower priority," it's not
+  # actually available, so it's penalized hard enough here to drop
+  # below min_score regardless of how well the title scores elsewhere.
+  disallow: *non_us_countries
 
 # Years-of-experience parsed from the description.
 experience:

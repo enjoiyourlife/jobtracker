@@ -194,12 +194,32 @@ class TestScoring:
         """
         Regression: 'remote' is a plain substring match, so
         'Remote (Buenos Aires, Argentina)' scored the same +25 as a
-        genuine US-remote posting.
+        genuine US-remote posting. Now caught by location.disallow,
+        which runs before tiers are considered at all — so this drops
+        below min_score rather than merely losing the +25.
         """
         s = score("Software Engineer", "Remote (Buenos Aires, Argentina)", None, crit)
-        assert s.location == 0
+        assert s.total < crit.min_score
 
     def test_plain_remote_still_scores(self, crit):
         """The exclude list must veto country-scoped remote without
         breaking the common case of an unqualified 'Remote'."""
         assert score("Software Engineer", "Remote", None, crit).location > 0
+
+    def test_foreign_onsite_location_falls_below_min_score(self, crit):
+        """
+        Regression: an onsite posting in a non-US country previously
+        scored 0 for location like any other unlisted city, so a
+        strong-seniority title (e.g. 'Software Engineer I') could still
+        clear min_score despite requiring work authorization the
+        candidate doesn't have.
+        """
+        s = score("Software Engineer I", "Beijing, China", None, crit)
+        assert s.total < crit.min_score
+
+    def test_disallowed_location_reason_is_traceable(self, crit):
+        s = score("Software Engineer I", "Beijing, China", None, crit)
+        assert any("china" in r for r in s.reasons)
+
+    def test_us_location_unaffected_by_disallow_list(self, crit):
+        assert score("Software Engineer", "Seattle, WA", None, crit).location > 0
