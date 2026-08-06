@@ -13,6 +13,7 @@ Commands:
     review   postings the classifier could not categorize
     tailor   answer-bank responses retargeted to one posting
     browse   interactive queue — arrow keys, a to apply, s to skip
+    schedule manage the daily-poll cron entry
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import webbrowser
 import anthropic
 from dotenv import load_dotenv
 
+from jobtracker import schedule as schedule_mod
 from jobtracker.browse import browse
 from jobtracker.db import applications as apps
 from jobtracker.db.connection import session
@@ -285,6 +287,34 @@ def cmd_browse(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_schedule(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """
+    Manage jobtracker's own daily-poll cron entry.
+
+    Doesn't touch the database — conn is accepted only to match the
+    dispatch signature every other command uses.
+    """
+    if args.schedule_action == "install":
+        hour, _, minute = args.time.partition(":")
+        try:
+            schedule_mod.install(hour=int(hour), minute=int(minute or 0))
+        except (ValueError, schedule_mod.ScheduleError) as exc:
+            print(f"Error: {exc}")
+            return 1
+        print(f"Scheduled: {schedule_mod.status()}")
+        return 0
+
+    if args.schedule_action == "uninstall":
+        removed = schedule_mod.uninstall()
+        print("Removed." if removed else "Nothing scheduled.")
+        return 0
+
+    # status (also the default with no subcommand)
+    current = schedule_mod.status()
+    print(current or "Not scheduled. Run `jobtracker schedule install`.")
+    return 0
+
+
 def main() -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(prog="jobtracker")
@@ -335,6 +365,25 @@ def main() -> int:
         help="only postings matching seniority.preferred in config.yaml",
     )
     p_browse.set_defaults(func=cmd_browse)
+
+    p_schedule = sub.add_parser("schedule", help="manage the daily-poll cron entry")
+    schedule_sub = p_schedule.add_subparsers(
+        dest="schedule_action", required=False
+    )
+
+    p_sched_install = schedule_sub.add_parser("install", help="install or replace the cron entry")
+    p_sched_install.add_argument(
+        "--time", default="07:00", help="24h local time, HH:MM (default 07:00)"
+    )
+    p_sched_install.set_defaults(func=cmd_schedule, schedule_action="install")
+
+    p_sched_status = schedule_sub.add_parser("status", help="show the current cron entry, if any")
+    p_sched_status.set_defaults(func=cmd_schedule, schedule_action="status")
+
+    p_sched_uninstall = schedule_sub.add_parser("uninstall", help="remove the cron entry")
+    p_sched_uninstall.set_defaults(func=cmd_schedule, schedule_action="uninstall")
+
+    p_schedule.set_defaults(func=cmd_schedule, schedule_action="status")
 
     args = parser.parse_args()
     with session() as conn:
