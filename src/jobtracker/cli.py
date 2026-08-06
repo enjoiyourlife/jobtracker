@@ -11,17 +11,23 @@ Commands:
     mark     advance an application's status
     status   pipeline counts and ghosted submissions
     review   postings the classifier could not categorize
+    tailor   answer-bank responses retargeted to one posting
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import webbrowser
+
+import anthropic
+from dotenv import load_dotenv
 
 from jobtracker.db import applications as apps
 from jobtracker.db.connection import session
 from jobtracker.filters import Classification, Criteria, classify, score
+from jobtracker.tailor import Profile, ProfileError, TailorError, select_variant, tailor_answer
 
 
 def _scored_jobs(conn: sqlite3.Connection, criteria: Criteria) -> dict[int, int]:
@@ -176,7 +182,75 @@ def cmd_review(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tailor(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """
+    Answer-bank responses retargeted to one posting.
+
+    Takes a queue position, same contract as `apply` and for the same
+    reason: resolved against the last `queue` snapshot rather than a
+    fresh query, so it acts on exactly what you looked at.
+
+    Prints to stdout rather than writing a file or filling a form —
+    every line here is a Claude rewrite of your own words, and needs a
+    human read before it goes anywhere near a real application.
+    """
+    job_id = apps.resolve_position(conn, args.position)
+    if job_id is None:
+        print(f"No position {args.position} in the last queue. Run `jobtracker queue` again.")
+        return 1
+
+    row = conn.execute(
+        """
+        SELECT j.title, j.description, c.name AS company
+          FROM jobs j JOIN companies c ON c.id = j.company_id
+         WHERE j.id = ?
+        """,
+        (job_id,),
+    ).fetchone()
+
+    try:
+        profile = Profile.load()
+    except ProfileError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        print("ANTHROPIC_API_KEY not set. Add it to .env and try again.")
+        return 1
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    print(f"{row['title']} at {row['company']}\n")
+
+    for key, value in profile.boilerplate.items():
+        print(f"[{key}]")
+        print(value)
+        print()
+
+    for question in profile.questions:
+        variant = select_variant(question, row["title"], row["description"])
+        project = profile.projects.get(variant.project_ref) if variant.project_ref else None
+        try:
+            answer = tailor_answer(
+                variant, project,
+                company=row["company"], title=row["title"], description=row["description"],
+                client=client,
+            )
+        except TailorError as exc:
+            print(f"[{question.id}] tailoring failed: {exc}\n")
+            continue
+
+        prompt_hint = question.prompts[0] if question.prompts else question.id
+        print(f"[{question.id}]  ({prompt_hint})")
+        print(answer)
+        print()
+
+    return 0
+
+
 def main() -> int:
+    load_dotenv()
     parser = argparse.ArgumentParser(prog="jobtracker")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -206,6 +280,10 @@ def main() -> int:
     p_review = sub.add_parser("review", help="titles the classifier could not place")
     p_review.add_argument("--limit", type=int, default=50)
     p_review.set_defaults(func=cmd_review)
+
+    p_tailor = sub.add_parser("tailor", help="answer-bank responses retargeted to one posting")
+    p_tailor.add_argument("position", type=int, help="position from the last `queue` listing")
+    p_tailor.set_defaults(func=cmd_tailor)
 
     args = parser.parse_args()
     with session() as conn:
