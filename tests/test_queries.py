@@ -1,8 +1,8 @@
 """
-CLI scoring-filter tests.
+queries.scored_jobs tests.
 
-_scored_jobs is where `queue`/`browse`'s --entry-level flag lives;
-covered here since it's real filtering logic, not argparse plumbing.
+This is where `queue`/`browse`/the GUI's --entry-level filter lives —
+one shared function, covered once here rather than per caller.
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ from __future__ import annotations
 import dataclasses
 
 from jobtracker.ats.base import RawJob
-from jobtracker.cli import _scored_jobs
 from jobtracker.db import jobs as repo
 from jobtracker.filters import Criteria
+from jobtracker.queries import scored_jobs
 
 CONFIG = """
 role:
@@ -64,7 +64,7 @@ class TestScoredJobsEntryLevel:
             make_job("1", "Software Engineer, New Grad"),
             make_job("2", "Senior Software Engineer"),
         ])
-        result = _scored_jobs(db, _criteria(tmp_path))
+        result = scored_jobs(db, _criteria(tmp_path))
         assert len(result) == 2
 
     def test_entry_level_only_excludes_neutral_seniority(self, db, tmp_path):
@@ -79,7 +79,7 @@ class TestScoredJobsEntryLevel:
             make_job("1", "Software Engineer, New Grad"),
             make_job("2", "Software Engineer"),
         ])
-        result = _scored_jobs(db, _criteria(tmp_path), entry_level_only=True)
+        result = scored_jobs(db, _criteria(tmp_path), entry_level_only=True)
 
         new_grad_id = db.execute(
             "SELECT id FROM jobs WHERE title LIKE '%New Grad%'"
@@ -90,7 +90,7 @@ class TestScoredJobsEntryLevel:
         cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
         repo.upsert_jobs(db, cid, [make_job("1", "Senior Software Engineer")])
 
-        assert _scored_jobs(db, _criteria(tmp_path), entry_level_only=True) == {}
+        assert scored_jobs(db, _criteria(tmp_path), entry_level_only=True) == {}
 
     def test_entry_level_only_still_respects_min_score(self, db, tmp_path):
         """entry_level_only narrows the pool; it doesn't bypass the
@@ -99,4 +99,4 @@ class TestScoredJobsEntryLevel:
         repo.upsert_jobs(db, cid, [make_job("1", "Software Engineer, New Grad")])
 
         strict = dataclasses.replace(_criteria(tmp_path), min_score=1000)
-        assert _scored_jobs(db, strict, entry_level_only=True) == {}
+        assert scored_jobs(db, strict, entry_level_only=True) == {}

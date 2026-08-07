@@ -207,3 +207,29 @@ class TestQueueSnapshot:
 
         assert apps.resolve_position(db, 1) == j3
         assert apps.resolve_position(db, 2) is None
+
+
+class TestListByStatus:
+    def test_returns_only_matching_status(self, db):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1"), make_job("2")])
+        j1, j2 = [r["id"] for r in db.execute("SELECT id FROM jobs ORDER BY id")]
+
+        apps.add(db, j1, status="queued")
+        apps.add(db, j2, status="skipped")
+
+        result = apps.list_by_status(db, "queued")
+        assert [r["job_id"] for r in result] == [j1]
+
+    def test_empty_when_nothing_in_that_status(self, db):
+        assert apps.list_by_status(db, "queued") == []
+
+    def test_includes_title_and_company_for_display(self, db):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1", title="Backend Engineer")])
+        job_id = db.execute("SELECT id FROM jobs").fetchone()["id"]
+        apps.add(db, job_id, status="queued")
+
+        result = apps.list_by_status(db, "queued")
+        assert result[0]["title"] == "Backend Engineer"
+        assert result[0]["company"] == "Acme"

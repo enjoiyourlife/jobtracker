@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Settings — jobtracker{% endblock %}
+{% block content %}
+<form method="post">
+  <fieldset>
+    <legend>Where do you want to work?</legend>
+    <small>Pick a priority for each place. Leave a row's cities blank to remove it.</small>
+    {% for t in city_tiers %}
+    <div class="tier-row">
+      <select name="tier_priority">
+        {% for key, score, label in priority_levels %}
+        <option value="{{ key }}" {{ 'selected' if t.priority == key else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="tier_cities" value="{{ t.cities }}" placeholder="seattle, bellevue, redmond">
+    </div>
+    {% endfor %}
+    <div class="tier-row">
+      <select name="tier_priority">
+        {% for key, score, label in priority_levels %}
+        <option value="{{ key }}" {{ 'selected' if key == 'medium' else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="tier_cities" value="" placeholder="add another place…">
+    </div>
+    <label class="checkbox-row" style="margin-top:1rem;">
+      <input type="checkbox" name="remote_ok" {{ 'checked' if remote_on else '' }}>
+      Also show remote-eligible roles
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>What roles are you looking for?</legend>
+    <label>Job titles to look for — one per line</label>
+    <small>e.g. Software Engineer, SDET, Backend Engineer</small>
+    <textarea name="role_include" rows="8">{{ settings.role_include|join('\n') }}</textarea>
+
+    <details>
+      <summary>Advanced: also exclude specific titles</summary>
+      <label>Titles to filter out even if they match above</label>
+      <small>Already covers common false positives like "Sales Engineer" and "Engineering Manager".</small>
+      <textarea name="role_exclude" rows="10">{{ settings.role_exclude|join('\n') }}</textarea>
+    </details>
+  </fieldset>
+
+  <fieldset>
+    <legend>What's your experience level?</legend>
+    {% for key, label in experience_labels.items() %}
+    <label class="checkbox-row">
+      <input type="radio" name="experience_level" value="{{ key }}" {{ 'checked' if experience_level == key else '' }}>
+      {{ label }}
+    </label>
+    {% endfor %}
+
+    <label style="margin-top:1rem;">How many years of experience do you have?</label>
+    <small>Roles asking for a lot more than this get ranked lower.</small>
+    <input type="number" name="max_years" value="{{ settings.max_years }}">
+
+    <details {{ 'open' if experience_level == 'custom' else '' }}>
+      <summary>Advanced: set my own terms directly</summary>
+      <small>Only used when "Custom" is selected above.</small>
+      <label>Terms that should boost a posting</label>
+      <textarea name="seniority_preferred" rows="5">{{ settings.seniority_preferred|join('\n') }}</textarea>
+      <label>Terms that should penalize a posting</label>
+      <textarea name="seniority_penalized" rows="5">{{ settings.seniority_penalized|join('\n') }}</textarea>
+      <label>Point penalty per year over your experience</label>
+      <input type="number" name="penalty_per_year" value="{{ settings.penalty_per_year }}">
+    </details>
+  </fieldset>
+
+  <fieldset>
+    <legend>How strict should filtering be?</legend>
+    {% for key, label in strictness_labels.items() %}
+    <label class="checkbox-row">
+      <input type="radio" name="strictness" value="{{ key }}" {{ 'checked' if strictness == key else '' }}>
+      {{ label }}
+    </label>
+    {% endfor %}
+  </fieldset>
+
+  <button type="submit" class="apply">Save</button>
+</form>
+{% endblock %}

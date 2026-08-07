@@ -198,6 +198,28 @@ def set_status(conn: sqlite3.Connection, job_id: int, new_status: str) -> None:
     )
 
 
+def list_by_status(conn: sqlite3.Connection, status: str) -> list[dict]:
+    """
+    Applications currently in one status, most recently queued first.
+
+    Used by the GUI's Status page to show what's sitting in 'queued'
+    awaiting a "mark submitted" confirmation — the one common next step
+    the CLI's `mark` command otherwise requires a job_id for.
+    """
+    rows = conn.execute(
+        """
+        SELECT a.job_id, j.title, c.name AS company, j.absolute_url, a.queued_at
+          FROM applications a
+          JOIN jobs j ON j.id = a.job_id
+          JOIN companies c ON c.id = j.company_id
+         WHERE a.status = ?
+         ORDER BY a.queued_at DESC
+        """,
+        (status,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def pipeline(conn: sqlite3.Connection) -> dict[str, int]:
     """Count of applications by status — the funnel, at a glance."""
     return {

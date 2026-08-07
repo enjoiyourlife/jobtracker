@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Status — jobtracker{% endblock %}
+{% block content %}
+
+<h2>Pipeline</h2>
+{% if not pipeline %}
+  <p>No applications yet.</p>
+{% else %}
+  {% for s in pipeline_order %}
+    {% if s in pipeline %}<div>{{ s }}: <strong>{{ pipeline[s] }}</strong></div>{% endif %}
+  {% endfor %}
+  {% if response_rate is not none %}
+    <p style="margin-top:0.75rem;">Response rate: {{ responded }}/{{ submitted }} ({{ response_rate }}%)</p>
+  {% endif %}
+{% endif %}
+
+<h2>Awaiting submission confirmation</h2>
+{% if not queued %}
+  <p>Nothing queued.</p>
+{% endif %}
+{% for a in queued %}
+<div class="posting">
+  <h3>{{ a.title }}</h3>
+  <div class="meta">{{ a.company }}</div>
+  <div class="actions">
+    <form method="post" action="{{ url_for('mark_submitted', job_id=a.job_id) }}" style="display:contents;">
+      <button type="submit" class="apply">Mark submitted</button>
+    </form>
+    <a href="{{ a.absolute_url }}" target="_blank" rel="noopener">View posting</a>
+  </div>
+</div>
+{% endfor %}
+
+<h2>Ghosted &mdash; no response in {{ ghost_threshold }}+ days</h2>
+{% if not ghosted %}
+  <p>None.</p>
+{% endif %}
+{% for g in ghosted %}
+<div class="posting">
+  <h3>{{ g.title }}</h3>
+  <div class="meta">{{ g.company }} &middot; {{ g.days_out }} days</div>
+</div>
+{% endfor %}
+{% endblock %}

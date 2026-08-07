@@ -14,6 +14,7 @@ Commands:
     tailor   answer-bank responses retargeted to one posting
     browse   interactive queue — arrow keys, a to apply, s to skip
     schedule manage the daily-poll cron entry
+    gui      local web GUI — queue, status, and settings in a browser
 """
 
 from __future__ import annotations
@@ -31,46 +32,13 @@ from jobtracker.browse import browse
 from jobtracker.db import applications as apps
 from jobtracker.db.connection import session
 from jobtracker.filters import Classification, Criteria, classify, score
+from jobtracker.queries import scored_jobs
 from jobtracker.tailor import Profile, ProfileError, TailorError, select_variant, tailor_answer
-
-
-def _scored_jobs(
-    conn: sqlite3.Connection, criteria: Criteria, *, entry_level_only: bool = False
-) -> dict[int, int]:
-    """
-    Score every open posting that classifies as a coding role.
-
-    Returns job_id -> score for those at or above min_score.
-
-    entry_level_only additionally requires the seniority dimension to
-    have scored positively — i.e. the title matched one of
-    seniority.preferred (junior, new grad, "I", early career, ...) in
-    config.yaml. This reuses that list rather than a separate one, so
-    tuning what counts as "entry level" is still just editing config.yaml
-    and takes effect immediately, with no second list to keep in sync.
-    """
-    rows = conn.execute(
-        "SELECT id, title, location, description FROM jobs WHERE closed_at IS NULL"
-    ).fetchall()
-
-    result: dict[int, int] = {}
-    for row in rows:
-        if classify(row["title"], criteria) is not Classification.MATCH:
-            continue
-        breakdown = score(
-            row["title"], row["location"], row["description"], criteria
-        )
-        if breakdown.total < criteria.min_score:
-            continue
-        if entry_level_only and breakdown.seniority <= 0:
-            continue
-        result[row["id"]] = breakdown.total
-    return result
 
 
 def cmd_queue(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     criteria = Criteria.load()
-    scored = _scored_jobs(conn, criteria, entry_level_only=args.entry_level)
+    scored = scored_jobs(conn, criteria, entry_level_only=args.entry_level)
     entries = apps.queue(conn, scored, limit=args.limit)
     apps.save_snapshot(conn, entries)
 
@@ -276,7 +244,7 @@ def cmd_browse(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     decision already made.
     """
     criteria = Criteria.load()
-    scored = _scored_jobs(conn, criteria, entry_level_only=args.entry_level)
+    scored = scored_jobs(conn, criteria, entry_level_only=args.entry_level)
     entries = apps.queue(conn, scored, limit=args.limit)
     if not entries:
         print("Queue empty. Poll for new postings or lower min_score.")
@@ -312,6 +280,17 @@ def cmd_schedule(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     # status (also the default with no subcommand)
     current = schedule_mod.status()
     print(current or "Not scheduled. Run `jobtracker schedule install`.")
+    return 0
+
+
+def cmd_gui(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """
+    Local web GUI. conn is unused — gui.run() opens its own connection
+    per request, same as every CLI command opens one per invocation.
+    """
+    from jobtracker.gui import run
+
+    run(port=args.port, open_browser=not args.no_browser)
     return 0
 
 
@@ -384,6 +363,11 @@ def main() -> int:
     p_sched_uninstall.set_defaults(func=cmd_schedule, schedule_action="uninstall")
 
     p_schedule.set_defaults(func=cmd_schedule, schedule_action="status")
+
+    p_gui = sub.add_parser("gui", help="local web GUI — queue, status, and settings in a browser")
+    p_gui.add_argument("--port", type=int, default=8765)
+    p_gui.add_argument("--no-browser", action="store_true", help="don't auto-open a browser tab")
+    p_gui.set_defaults(func=cmd_gui)
 
     args = parser.parse_args()
     with session() as conn:
