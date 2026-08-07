@@ -14,7 +14,7 @@ Commands:
     tailor   answer-bank responses retargeted to one posting
     browse   interactive queue — arrow keys, a to apply, s to skip
     schedule manage the daily-poll cron entry
-    gui      local web GUI — queue, status, and settings in a browser
+    gui      desktop GUI — queue, status, and settings in their own window
 """
 
 from __future__ import annotations
@@ -290,7 +290,7 @@ def cmd_gui(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     """
     from jobtracker.gui import run
 
-    run(port=args.port, open_browser=not args.no_browser)
+    run(port=args.port, native_window=not args.browser_tab)
     return 0
 
 
@@ -364,9 +364,12 @@ def main() -> int:
 
     p_schedule.set_defaults(func=cmd_schedule, schedule_action="status")
 
-    p_gui = sub.add_parser("gui", help="local web GUI — queue, status, and settings in a browser")
+    p_gui = sub.add_parser("gui", help="desktop GUI — queue, status, and settings in their own window")
     p_gui.add_argument("--port", type=int, default=8765)
-    p_gui.add_argument("--no-browser", action="store_true", help="don't auto-open a browser tab")
+    p_gui.add_argument(
+        "--browser-tab", action="store_true",
+        help="open in your default browser instead of a native window",
+    )
     p_gui.set_defaults(func=cmd_gui)
 
     args = parser.parse_args()

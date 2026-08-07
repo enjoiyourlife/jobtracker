@@ -15,7 +15,7 @@ across requests, no extra state to reason about.
 from __future__ import annotations
 
 import webbrowser
-from threading import Timer
+from threading import Thread, Timer
 
 from flask import Flask, redirect, render_template, request, url_for
 
@@ -163,9 +163,36 @@ def _lines(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
-def run(host: str = "127.0.0.1", port: int = 8765, open_browser: bool = True) -> None:
+def run(host: str = "127.0.0.1", port: int = 8765, native_window: bool = True) -> None:
+    """
+    Start the local server and present it.
+
+    native_window=True (the default) wraps the app in an actual OS
+    window via pywebview — WKWebView on macOS — instead of opening a
+    tab in whichever browser happens to be the system default: its own
+    resizable window, no tabs or address bar, closes independently of
+    anything else you have open. Flask runs in a background thread
+    because pywebview's event loop has to own the main thread.
+
+    native_window=False falls back to the plain browser-tab behavior,
+    for environments without a display server (or anyone who just
+    prefers a normal tab).
+    """
     url = f"http://{host}:{port}"
-    if open_browser:
+
+    if not native_window:
         Timer(1.0, lambda: webbrowser.open(url)).start()
-    print(f"jobtracker GUI running at {url} (Ctrl+C to stop)")
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+        print(f"jobtracker GUI running at {url} (Ctrl+C to stop)")
+        app.run(host=host, port=port, debug=False, use_reloader=False)
+        return
+
+    import webview
+
+    server = Thread(
+        target=lambda: app.run(host=host, port=port, debug=False, use_reloader=False),
+        daemon=True,
+    )
+    server.start()
+
+    webview.create_window("jobtracker", url, width=1050, height=800, min_size=(700, 500))
+    webview.start()
