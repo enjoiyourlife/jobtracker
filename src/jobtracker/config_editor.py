@@ -73,6 +73,7 @@ class EditableSettings:
     max_years: int = 2
     penalty_per_year: int = 15
     min_score: int = 0
+    browser: str = "system"  # which browser "Apply" opens postings in — see browser_launcher.py
 
 
 def _flow_list(items: list[str]) -> CommentedSeq:
@@ -106,6 +107,7 @@ def load_editable(path: Path | None = None) -> EditableSettings:
         max_years=int(raw["experience"].get("max_years", 2)),
         penalty_per_year=int(raw["experience"].get("penalty_per_year", 15)),
         min_score=int(raw.get("min_score", 0)),
+        browser=str(raw.get("browser", "system")),
     )
 
 
@@ -161,5 +163,6 @@ def apply_editable(settings: EditableSettings, path: Path | None = None) -> None
     raw["experience"]["max_years"] = settings.max_years
     raw["experience"]["penalty_per_year"] = settings.penalty_per_year
     raw["min_score"] = settings.min_score
+    raw["browser"] = settings.browser
 
     save_raw(raw, path)

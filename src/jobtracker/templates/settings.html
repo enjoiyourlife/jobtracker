@@ -79,6 +79,18 @@
     {% endfor %}
   </fieldset>
 
+  <fieldset>
+    <legend>Which browser should Apply open?</legend>
+    <small>Applying inside this app's own window would skip your saved passwords and autofill, so it always opens a real browser instead.</small>
+    <select name="browser">
+      {% for name in available_browsers %}
+      <option value="{{ name }}" {{ 'selected' if settings.browser == name else '' }}>
+        {{ "System default" if name == "system" else name }}
+      </option>
+      {% endfor %}
+    </select>
+  </fieldset>
+
   <button type="submit" class="btn btn-primary" style="padding: 9px 22px; font-size: 14px;">
     <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Save

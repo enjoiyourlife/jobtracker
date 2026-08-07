@@ -50,9 +50,14 @@ def _job_id(db) -> int:
     return db.execute("SELECT id FROM jobs").fetchone()["id"]
 
 
+class _StubSettings:
+    browser = "system"
+
+
 class TestApplySelected:
     def test_records_queued_application(self, db, monkeypatch):
-        monkeypatch.setattr("jobtracker.browse.webbrowser.open", lambda url: None)
+        monkeypatch.setattr("jobtracker.browse.load_editable", lambda: _StubSettings())
+        monkeypatch.setattr("jobtracker.browse.browser_launcher.open_url", lambda url, browser: None)
         job_id = _job_id(db)
 
         apply_selected(db, make_entry(job_id, url="https://example.com/1"))
@@ -63,14 +68,18 @@ class TestApplySelected:
         assert row["status"] == "queued"
         assert row["score"] == 50
 
-    def test_opens_the_browser(self, db, monkeypatch):
+    def test_opens_the_configured_browser(self, db, monkeypatch):
         opened = []
-        monkeypatch.setattr("jobtracker.browse.webbrowser.open", opened.append)
+        monkeypatch.setattr("jobtracker.browse.load_editable", lambda: _StubSettings())
+        monkeypatch.setattr(
+            "jobtracker.browse.browser_launcher.open_url",
+            lambda url, browser: opened.append((url, browser)),
+        )
         job_id = _job_id(db)
 
         apply_selected(db, make_entry(job_id, url="https://example.com/1"))
 
-        assert opened == ["https://example.com/1"]
+        assert opened == [("https://example.com/1", "system")]
 
 
 class TestSkipSelected:
@@ -86,7 +95,10 @@ class TestSkipSelected:
 
     def test_does_not_open_browser(self, db, monkeypatch):
         opened = []
-        monkeypatch.setattr("jobtracker.browse.webbrowser.open", opened.append)
+        monkeypatch.setattr(
+            "jobtracker.browse.browser_launcher.open_url",
+            lambda url, browser: opened.append(url),
+        )
 
         skip_selected(db, make_entry(_job_id(db)))
 

@@ -22,13 +22,14 @@ from __future__ import annotations
 import argparse
 import os
 import sqlite3
-import webbrowser
 
 import anthropic
 from dotenv import load_dotenv
 
+from jobtracker import browser_launcher
 from jobtracker import schedule as schedule_mod
 from jobtracker.browse import browse
+from jobtracker.config_editor import load_editable
 from jobtracker.db import applications as apps
 from jobtracker.db.connection import session
 from jobtracker.filters import Classification, Criteria, classify, score
@@ -92,7 +93,7 @@ def cmd_apply(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     print(f"Queued: {row['title']} at {row['company']}")
     print(f"Opening {row['absolute_url']}")
     print("Once submitted:  jobtracker mark", job_id, "submitted")
-    webbrowser.open(row["absolute_url"])
+    browser_launcher.open_url(row["absolute_url"], browser=load_editable().browser)
     return 0
 
 

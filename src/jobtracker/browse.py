@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import curses
 import sqlite3
-import webbrowser
 
+from jobtracker import browser_launcher
+from jobtracker.config_editor import load_editable
 from jobtracker.db import applications as apps
 
 _HELP = "↑/↓ or j/k move · a apply · s skip · q quit"
@@ -32,7 +33,7 @@ def apply_selected(conn: sqlite3.Connection, entry: apps.QueueEntry) -> None:
     """Record the decision and open the posting — same effect as `apply <position>`."""
     apps.add(conn, entry.job_id, score=entry.score)
     conn.commit()
-    webbrowser.open(entry.url)
+    browser_launcher.open_url(entry.url, browser=load_editable().browser)
 
 
 def skip_selected(conn: sqlite3.Connection, entry: apps.QueueEntry) -> None:

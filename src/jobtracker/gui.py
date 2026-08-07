@@ -19,6 +19,7 @@ from threading import Thread, Timer
 
 from flask import Flask, redirect, render_template, request, url_for
 
+from jobtracker import browser_launcher
 from jobtracker import settings_presets as presets
 from jobtracker.config_editor import EditableSettings, Tier, apply_editable, load_editable
 from jobtracker.db import applications as apps
@@ -49,6 +50,16 @@ def index():
 
 @app.route("/apply/<int:job_id>")
 def apply(job_id: int):
+    """
+    Record the decision and open the posting in a real browser.
+
+    Deliberately not a redirect: this GUI runs inside a WKWebView-
+    backed native window, which has none of your saved passwords,
+    autofill, or extensions — redirecting *that* window to the
+    application page would trade all of that away, and would also
+    navigate the app itself off the queue. browser_launcher opens a
+    separate, real browser process instead, and the app stays put.
+    """
     with session() as conn:
         row = conn.execute(
             "SELECT absolute_url FROM jobs WHERE id = ?", (job_id,)
@@ -56,7 +67,9 @@ def apply(job_id: int):
         if row is None:
             return redirect(url_for("index"))
         apps.add(conn, job_id)
-    return redirect(row["absolute_url"])
+
+    browser_launcher.open_url(row["absolute_url"], browser=load_editable().browser)
+    return redirect(url_for("index", entry_level=request.args.get("entry_level")))
 
 
 @app.route("/skip/<int:job_id>")
@@ -134,6 +147,7 @@ def settings():
             max_years=int(request.form.get("max_years", 2)),
             penalty_per_year=int(request.form.get("penalty_per_year", 15)),
             min_score=presets.STRICTNESS_LEVELS[request.form.get("strictness", "balanced")],
+            browser=request.form.get("browser", browser_launcher.SYSTEM_DEFAULT),
         )
         apply_editable(updated)
         return redirect(url_for("settings"))
@@ -154,6 +168,7 @@ def settings():
         experience_labels=presets.EXPERIENCE_LABELS,
         strictness=presets.closest_strictness(current.min_score),
         strictness_labels=presets.STRICTNESS_LABELS,
+        available_browsers=browser_launcher.available_browsers(),
         active="settings",
     )
 
