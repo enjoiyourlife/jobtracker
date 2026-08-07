@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Settings — jobtracker{% endblock %}
 {% block content %}
+<h1>Settings</h1>
 <form method="post">
   <fieldset>
     <legend>Where do you want to work?</legend>
@@ -23,7 +24,7 @@
       </select>
       <input type="text" name="tier_cities" value="" placeholder="add another place…">
     </div>
-    <label class="checkbox-row" style="margin-top:1rem;">
+    <label class="checkbox-row" style="margin-top: var(--sp-4);">
       <input type="checkbox" name="remote_ok" {{ 'checked' if remote_on else '' }}>
       Also show remote-eligible roles
     </label>
@@ -52,7 +53,7 @@
     </label>
     {% endfor %}
 
-    <label style="margin-top:1rem;">How many years of experience do you have?</label>
+    <label style="margin-top: var(--sp-4);">How many years of experience do you have?</label>
     <small>Roles asking for a lot more than this get ranked lower.</small>
     <input type="number" name="max_years" value="{{ settings.max_years }}">
 
@@ -78,6 +79,9 @@
     {% endfor %}
   </fieldset>
 
-  <button type="submit" class="apply">Save</button>
+  <button type="submit" class="btn btn-primary" style="padding: 9px 22px; font-size: 14px;">
+    <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Save
+  </button>
 </form>
 {% endblock %}

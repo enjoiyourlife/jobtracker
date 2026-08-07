@@ -5,50 +5,242 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}jobtracker{% endblock %}</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         max-width: 900px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
-  nav { display: flex; gap: 1.25rem; margin-bottom: 1.5rem; padding-bottom: 1rem;
-        border-bottom: 1px solid #88888833; }
-  nav a { text-decoration: none; font-weight: 600; color: inherit; opacity: 0.55; }
-  nav a.active { opacity: 1; border-bottom: 2px solid currentColor; padding-bottom: 0.9rem; margin-bottom: -1rem; }
-  h2 { margin-top: 2rem; }
-  .posting { border: 1px solid #88888833; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
-  .posting h3 { margin: 0 0 0.25rem; }
-  .meta { opacity: 0.65; font-size: 0.9rem; margin-bottom: 0.6rem; }
-  .score { font-variant-numeric: tabular-nums; font-weight: 700; opacity: 0.8; }
-  .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-  .actions a, .actions button { padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid #88888855;
-        cursor: pointer; text-decoration: none; color: inherit; font: inherit; background: none; }
-  .apply { background: #2563eb; color: white; border-color: #2563eb; }
-  .flash { background: #22c55e2a; border: 1px solid #22c55e88; padding: 0.6rem 1rem;
-           border-radius: 6px; margin-bottom: 1rem; }
-  fieldset { border: 1px solid #88888833; border-radius: 8px; margin-bottom: 1.25rem; padding: 0 1rem 1rem; }
-  legend { font-weight: 700; padding: 0 0.4rem; }
-  label { display: block; font-weight: 600; margin: 1rem 0 0.3rem; }
+  :root {
+    color-scheme: light dark;
+    --accent: #0071e3;
+    --accent-hover: #0077ed;
+    --accent-active: #0068d1;
+    --accent-tint: #0071e314;
+    --success: #30b350;
+    --success-tint: #30b35018;
+    --danger: #ff3b30;
+
+    --radius-sm: 7px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+
+    --bg: #f2f2f4;
+    --surface: #ffffff;
+    --surface-2: #fafafb;
+    --text: #1d1d1f;
+    --text-2: #6e6e73;
+    --text-3: #9a9a9f;
+    --border: rgba(0,0,0,.08);
+    --border-strong: rgba(0,0,0,.13);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.05), 0 1px 1px rgba(0,0,0,.04);
+    --shadow-md: 0 6px 16px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.06);
+
+    --score-high-bg: #1fae5314; --score-high-fg: #1a9147;
+    --score-mid-bg: #0071e314;  --score-mid-fg: #0071e3;
+    --score-low-bg: #6e6e7314;  --score-low-fg: #6e6e73;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --accent-tint: #0a84ff22;
+      --success-tint: #32d74a22;
+      --bg: #1e1e20;
+      --surface: #2a2a2d;
+      --surface-2: #252528;
+      --text: #f5f5f7;
+      --text-2: #a6a6ab;
+      --text-3: #808085;
+      --border: rgba(255,255,255,.09);
+      --border-strong: rgba(255,255,255,.15);
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+      --shadow-md: 0 6px 16px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.3);
+      --shadow-lg: 0 16px 40px rgba(0,0,0,.5);
+      --accent: #0a84ff;
+      --accent-hover: #3396ff;
+      --accent-active: #1a76e0;
+      --score-high-bg: #32d74a1f; --score-high-fg: #3ee06a;
+      --score-mid-bg: #0a84ff1f;  --score-mid-fg: #4aa3ff;
+      --score-low-bg: #ffffff14;  --score-low-fg: #a6a6ab;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text);
+    margin: 0; line-height: 1.47; -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+  }
+  ::selection { background: var(--accent-tint); }
+
+  .toolbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; justify-content: center; align-items: center;
+    padding: var(--sp-3) var(--sp-4);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border-bottom: 1px solid var(--border);
+  }
+  .segmented {
+    display: inline-flex; gap: 2px; padding: 2px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .segmented a {
+    display: flex; align-items: center; gap: 6px;
+    text-decoration: none; color: var(--text-2); font-weight: 590; font-size: 13px;
+    padding: 6px 14px; border-radius: calc(var(--radius-md) - 3px);
+    transition: color .15s ease, background .15s ease;
+  }
+  .segmented a svg { width: 15px; height: 15px; opacity: .85; }
+  .segmented a:hover { color: var(--text); }
+  .segmented a.active {
+    background: var(--surface); color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+
+  main { max-width: 760px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) var(--sp-7); }
+
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 var(--sp-4); }
+  h2 {
+    font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-3); margin: var(--sp-6) 0 var(--sp-3);
+  }
+  h2:first-child { margin-top: 0; }
+  p { color: var(--text-2); }
+
+  .flash {
+    display: flex; align-items: center; gap: var(--sp-2);
+    background: var(--success-tint); border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+    color: var(--text); padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--radius-md); margin-bottom: var(--sp-4); font-weight: 500; font-size: 13px;
+  }
+
+  /* Postings */
+  .posting {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-3);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+  }
+  .posting:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+  .posting-top { display: flex; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-1); }
+  .posting h3 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -0.005em; flex: 1; }
+  .meta { color: var(--text-2); font-size: 13px; margin: var(--sp-1) 0 var(--sp-3); }
+
+  .score-badge {
+    flex: none; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 12px;
+    padding: 3px 9px; border-radius: 999px; line-height: 1.5; margin-top: 1px;
+  }
+  .score-high { background: var(--score-high-bg); color: var(--score-high-fg); }
+  .score-mid  { background: var(--score-mid-bg);  color: var(--score-mid-fg); }
+  .score-low  { background: var(--score-low-bg);  color: var(--score-low-fg); }
+
+  .actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+    cursor: pointer; text-decoration: none; color: var(--text); background: var(--surface-2);
+    font: inherit; font-weight: 590; font-size: 13px;
+    transition: background .15s ease, transform .08s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .btn svg { width: 14px; height: 14px; }
+  .btn:hover { border-color: var(--border-strong); background: color-mix(in srgb, var(--surface-2) 60%, var(--border)); }
+  .btn:active { transform: scale(.96); }
+  .btn-primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn-primary:active { background: var(--accent-active); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+  .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+
+  .empty {
+    text-align: center; padding: var(--sp-7) var(--sp-4); color: var(--text-3);
+    border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); font-size: 13.5px;
+  }
+
+  /* Forms */
+  fieldset {
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    background: var(--surface); box-shadow: var(--shadow-sm);
+    margin: 0 0 var(--sp-5); padding: var(--sp-5); min-width: 0;
+  }
+  legend {
+    font-weight: 700; font-size: 15px; padding: 0 2px; margin-left: -2px; letter-spacing: -0.005em;
+  }
+  label { display: block; font-weight: 600; font-size: 13px; margin: var(--sp-4) 0 var(--sp-1); }
+  fieldset > label:first-of-type, legend + small { margin-top: var(--sp-1); }
+  small { color: var(--text-2); display: block; font-size: 12.5px; margin-bottom: var(--sp-2); }
+
   textarea, input[type=text], input[type=number], select {
-    width: 100%; box-sizing: border-box; padding: 0.45rem 0.6rem; font: inherit;
-    border-radius: 5px; border: 1px solid #88888866; background: transparent; color: inherit; }
-  .tier-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center; }
-  .tier-row select { width: 11rem; flex: none; }
-  small { opacity: 0.6; display: block; margin-bottom: 0.5rem; }
-  .checkbox-row { display: flex; align-items: center; gap: 0.5rem; font-weight: normal;
-                  margin: 0.5rem 0; }
-  .checkbox-row input { width: auto; }
-  details { margin-top: 1.25rem; padding-top: 0.9rem; border-top: 1px solid #88888833; }
-  summary { cursor: pointer; font-weight: 600; opacity: 0.75; }
-  summary:hover { opacity: 1; }
+    width: 100%; box-sizing: border-box; padding: 8px 10px; font: inherit; font-size: 13.5px;
+    border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+    background: var(--surface-2); color: var(--text);
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  textarea:focus, input:focus, select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+  textarea { resize: vertical; font-family: inherit; line-height: 1.6; }
+  select { appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236e6e73' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+
+  input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  .tier-row { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-2); align-items: center; }
+  .tier-row select { width: 10.5rem; flex: none; }
+
+  .checkbox-row {
+    display: flex; align-items: center; gap: var(--sp-2); font-weight: 500; font-size: 13.5px;
+    margin: var(--sp-2) 0; cursor: pointer;
+  }
+
+  details { margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+  summary {
+    cursor: pointer; font-weight: 600; font-size: 13px; color: var(--text-2);
+    display: flex; align-items: center; gap: 6px; list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s ease;
+  }
+  details[open] summary::before { transform: rotate(45deg); }
+  summary:hover { color: var(--text); }
+
+  .btn[type=submit], button.btn { font: inherit; }
 </style>
 </head>
 <body>
-<nav>
-  <a href="/" class="{{ 'active' if active == 'queue' else '' }}">Queue</a>
-  <a href="/status" class="{{ 'active' if active == 'status' else '' }}">Status</a>
-  <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Settings</a>
-</nav>
+<div class="toolbar">
+  <nav class="segmented">
+    <a href="/" class="{{ 'active' if active == 'queue' else '' }}">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      Queue
+    </a>
+    <a href="/status" class="{{ 'active' if active == 'status' else '' }}">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M3 15V9M9 15V4M15 15v-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Status
+    </a>
+    <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">
+      <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.6"/><path d="M10 2.6v2M10 15.4v2M17.4 10h-2M4.6 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3L4.9 4.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      Settings
+    </a>
+  </nav>
+</div>
+<main>
 {% with messages = get_flashed_messages() %}
-  {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
+  {% for m in messages %}
+  <div class="flash">
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    {{ m }}
+  </div>
+  {% endfor %}
 {% endwith %}
 {% block content %}{% endblock %}
+</main>
 </body>
 </html>

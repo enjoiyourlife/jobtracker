@@ -1,44 +1,61 @@
 {% extends "base.html" %}
 {% block title %}Status — jobtracker{% endblock %}
 {% block content %}
+<h1>Status</h1>
 
 <h2>Pipeline</h2>
 {% if not pipeline %}
-  <p>No applications yet.</p>
+  <div class="empty">No applications yet.</div>
 {% else %}
-  {% for s in pipeline_order %}
-    {% if s in pipeline %}<div>{{ s }}: <strong>{{ pipeline[s] }}</strong></div>{% endif %}
-  {% endfor %}
+  <div class="posting" style="display:flex; flex-wrap:wrap; gap: var(--sp-5);">
+    {% for s in pipeline_order %}
+      {% if s in pipeline %}
+      <div>
+        <div style="font-size:22px; font-weight:700; letter-spacing:-0.01em;">{{ pipeline[s] }}</div>
+        <div style="color:var(--text-2); font-size:12.5px; text-transform:capitalize;">{{ s }}</div>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
   {% if response_rate is not none %}
-    <p style="margin-top:0.75rem;">Response rate: {{ responded }}/{{ submitted }} ({{ response_rate }}%)</p>
+    <p style="margin-top: var(--sp-3); font-size:13px;">Response rate: <strong style="color:var(--text);">{{ responded }}/{{ submitted }}</strong> ({{ response_rate }}%)</p>
   {% endif %}
 {% endif %}
 
 <h2>Awaiting submission confirmation</h2>
 {% if not queued %}
-  <p>Nothing queued.</p>
+  <div class="empty">Nothing queued.</div>
 {% endif %}
 {% for a in queued %}
 <div class="posting">
-  <h3>{{ a.title }}</h3>
+  <div class="posting-top"><h3>{{ a.title }}</h3></div>
   <div class="meta">{{ a.company }}</div>
   <div class="actions">
     <form method="post" action="{{ url_for('mark_submitted', job_id=a.job_id) }}" style="display:contents;">
-      <button type="submit" class="apply">Mark submitted</button>
+      <button type="submit" class="btn btn-primary">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Mark submitted
+      </button>
     </form>
-    <a href="{{ a.absolute_url }}" target="_blank" rel="noopener">View posting</a>
+    <a class="btn btn-ghost" href="{{ a.absolute_url }}" target="_blank" rel="noopener">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M8 5H5a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M12 4h4v4M15.5 4.5L9 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      View posting
+    </a>
   </div>
 </div>
 {% endfor %}
 
 <h2>Ghosted &mdash; no response in {{ ghost_threshold }}+ days</h2>
 {% if not ghosted %}
-  <p>None.</p>
+  <div class="empty">None.</div>
 {% endif %}
 {% for g in ghosted %}
 <div class="posting">
-  <h3>{{ g.title }}</h3>
-  <div class="meta">{{ g.company }} &middot; {{ g.days_out }} days</div>
+  <div class="posting-top">
+    <h3>{{ g.title }}</h3>
+    <span class="score-badge score-low">{{ g.days_out }}d</span>
+  </div>
+  <div class="meta">{{ g.company }}</div>
 </div>
 {% endfor %}
 {% endblock %}

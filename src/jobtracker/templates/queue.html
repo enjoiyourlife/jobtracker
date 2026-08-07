@@ -1,28 +1,44 @@
 {% extends "base.html" %}
 {% block title %}Queue — jobtracker{% endblock %}
 {% block content %}
-<form method="get" style="margin-bottom:1.25rem; display:flex; gap:1rem; align-items:center;">
-  <label style="display:inline-flex; align-items:center; gap:0.4rem; font-weight:normal; margin:0;">
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--sp-5);">
+  <h1 style="margin:0;">Queue</h1>
+  <span style="color:var(--text-2); font-size:13px;">{{ entries|length }} awaiting decision</span>
+</div>
+
+<form method="get" style="margin-bottom: var(--sp-5);">
+  <label class="checkbox-row" style="margin:0;">
     <input type="checkbox" name="entry_level" value="1" {{ 'checked' if entry_level else '' }}
            onchange="this.form.submit()">
     Entry-level only
   </label>
-  <span style="opacity:0.7;">{{ entries|length }} awaiting decision</span>
 </form>
 
 {% if not entries %}
-  <p>Queue empty. Poll for new postings, lower <code>min_score</code> in Settings, or clear the entry-level filter.</p>
+  <div class="empty">Queue empty. Poll for new postings, lower the strictness in Settings, or clear the entry-level filter.</div>
 {% endif %}
 
 {% for e in entries %}
+{% set tier = 'score-high' if e.score >= 50 else ('score-mid' if e.score >= 30 else 'score-low') %}
 <div class="posting">
-  <span class="score">[{{ e.score }}]</span>
-  <h3>{{ e.title }}</h3>
+  <div class="posting-top">
+    <h3>{{ e.title }}</h3>
+    <span class="score-badge {{ tier }}">{{ e.score }}</span>
+  </div>
   <div class="meta">{{ e.company }} &middot; {{ e.location or "—" }}</div>
   <div class="actions">
-    <a class="apply" href="{{ url_for('apply', job_id=e.job_id) }}">Apply</a>
-    <a href="{{ url_for('skip', job_id=e.job_id) }}">Skip</a>
-    <a href="{{ e.url }}" target="_blank" rel="noopener">View posting</a>
+    <a class="btn btn-primary" href="{{ url_for('apply', job_id=e.job_id) }}">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Apply
+    </a>
+    <a class="btn btn-ghost" href="{{ url_for('skip', job_id=e.job_id) }}">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      Skip
+    </a>
+    <a class="btn btn-ghost" href="{{ e.url }}" target="_blank" rel="noopener">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M8 5H5a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M12 4h4v4M15.5 4.5L9 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      View posting
+    </a>
   </div>
 </div>
 {% endfor %}
