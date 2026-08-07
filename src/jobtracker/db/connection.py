@@ -14,8 +14,12 @@ from importlib import resources
 from pathlib import Path
 from typing import Iterator
 
-# Default location. Gitignored — this is local state, not source.
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[3] / "data" / "jobtracker.db"
+from jobtracker import paths
+
+# Source checkout: project root. Packaged app: the OS's per-user data
+# dir — see paths.py for why these can't be the same thing once the
+# app isn't running out of a source tree.
+DEFAULT_DB_PATH = paths.DB_PATH
 
 
 def _load_schema() -> str:

@@ -45,7 +45,9 @@ from typing import Any
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedSeq
 
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
+from jobtracker import paths
+
+CONFIG_PATH = paths.CONFIG_PATH
 
 _yaml = YAML()
 _yaml.preserve_quotes = True

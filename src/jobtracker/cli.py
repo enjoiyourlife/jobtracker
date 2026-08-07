@@ -26,7 +26,7 @@ import sqlite3
 import anthropic
 from dotenv import load_dotenv
 
-from jobtracker import browser_launcher
+from jobtracker import browser_launcher, paths
 from jobtracker import schedule as schedule_mod
 from jobtracker.browse import browse
 from jobtracker.config_editor import load_editable
@@ -296,7 +296,8 @@ def cmd_gui(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    load_dotenv()
+    paths.ensure_default_config()  # no-op unless this is a packaged app's first launch
+    load_dotenv(paths.ENV_PATH)  # explicit path — load_dotenv()'s CWD search isn't reliable in a packaged app
     parser = argparse.ArgumentParser(prog="jobtracker")
     sub = parser.add_subparsers(dest="command", required=True)
 

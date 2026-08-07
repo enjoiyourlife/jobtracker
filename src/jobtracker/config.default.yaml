@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────
+# jobtracker search criteria — starter config for a new install.
+#
+# Edit this through the app's Settings page, or by hand here — both
+# read and write this same file. No code changes required either way.
+#
+# Matching is case-insensitive substring on the job title unless
+# noted. Order of evaluation: exclude wins, then include, then
+# anything left over lands in "unclassified" for weekly review.
+# ─────────────────────────────────────────────────────────────
+
+# Boards to poll, grouped by ATS. Empty by default — add companies
+# from Settings, or run `jobtracker resolver "Company Name"` to find
+# a board slug and add it here yourself.
+boards:
+  greenhouse: []
+  lever: []
+  ashby: []
+
+role:
+  include:
+    - software engineer
+    - software developer
+    - swe
+    - backend engineer
+    - frontend engineer
+    - full stack
+    - sdet
+    - qa engineer
+
+  exclude:
+    - sales engineer
+    - solutions engineer
+    - engineering manager
+    - product manager
+    - recruiter
+    - principal
+    - staff engineer
+    - distinguished
+
+seniority:
+  preferred:
+    - junior
+    - associate
+    - new grad
+    - entry level
+    - early career
+    - "i"
+  neutral: 0
+  penalized:
+    - senior
+    - sr.
+    - lead
+    - staff
+
+# No cities configured yet — add them from Settings ("Where do you
+# want to work?"). A posting in an unlisted city still shows up,
+# just without a location bonus.
+location:
+  tiers: []
+  disallow: []
+
+experience:
+  max_years: 2
+  penalty_per_year: 15
+
+min_score: 0
+
+browser: system

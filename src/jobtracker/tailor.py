@@ -33,7 +33,9 @@ from typing import Any
 import anthropic
 import yaml
 
-PROFILE_DIR = Path(__file__).resolve().parents[2] / "profile"
+from jobtracker import paths
+
+PROFILE_DIR = paths.PROFILE_DIR
 MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 400
 DESCRIPTION_CHARS = 1500  # enough context to tailor against; keeps cost predictable

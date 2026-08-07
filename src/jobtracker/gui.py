@@ -19,7 +19,7 @@ from threading import Thread, Timer
 
 from flask import Flask, redirect, render_template, request, url_for
 
-from jobtracker import browser_launcher
+from jobtracker import browser_launcher, paths
 from jobtracker import settings_presets as presets
 from jobtracker.config_editor import EditableSettings, Tier, apply_editable, load_editable
 from jobtracker.db import applications as apps
@@ -33,7 +33,12 @@ PIPELINE_ORDER = [
     "screening", "interview", "offer", "rejected",
 ]
 
-app = Flask(__name__)
+# Explicit template_folder rather than Flask's automatic package-relative
+# resolution — that guessing works from a normal source checkout, but
+# a PyInstaller-frozen app's module locations don't follow the same
+# layout, so this points at the one true source of truth (paths.py)
+# instead of hoping Flask's default guess still lines up.
+app = Flask(__name__, template_folder=str(paths.bundled_resource("templates")))
 app.secret_key = "jobtracker-local"  # local-only tool; no real session security needed
 
 

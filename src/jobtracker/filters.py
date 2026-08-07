@@ -28,7 +28,9 @@ from typing import Any
 
 import yaml
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
+from jobtracker import paths
+
+DEFAULT_CONFIG_PATH = paths.CONFIG_PATH
 
 # "3+ years", "3-5 years", "minimum of 4 years", "at least 2 yrs"
 _YOE_PATTERN = re.compile(

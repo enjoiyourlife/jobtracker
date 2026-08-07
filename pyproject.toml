@@ -17,7 +17,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "jobtracker.db" = ["*.sql"]
-"jobtracker" = ["templates/*.html"]
+"jobtracker" = ["templates/*.html", "config.default.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
