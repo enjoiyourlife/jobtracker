@@ -4,7 +4,7 @@
     <h3>{{ e.title }}</h3>
     <span class="score-badge {{ tier }}">{{ e.score }}</span>
   </div>
-  <div class="meta">{{ e.company }} &middot; {{ e.location or "—" }}</div>
+  <div class="meta">{{ e.company | company_name }} &middot; {{ e.location or "—" }}</div>
   <div class="actions">
     <a class="btn btn-primary" href="{{ url_for('apply', job_id=e.job_id) }}">
       <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

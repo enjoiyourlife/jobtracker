@@ -29,7 +29,7 @@
 {% for a in queued %}
 <div class="posting">
   <div class="posting-top"><h3>{{ a.title }}</h3></div>
-  <div class="meta">{{ a.company }}</div>
+  <div class="meta">{{ a.company | company_name }}</div>
   <div class="actions">
     <form method="post" action="{{ url_for('mark_submitted', job_id=a.job_id) }}" style="display:contents;">
       <button type="submit" class="btn btn-primary">
@@ -55,7 +55,7 @@
     <h3>{{ g.title }}</h3>
     <span class="score-badge score-low">{{ g.days_out }}d</span>
   </div>
-  <div class="meta">{{ g.company }}</div>
+  <div class="meta">{{ g.company | company_name }}</div>
 </div>
 {% endfor %}
 {% endblock %}

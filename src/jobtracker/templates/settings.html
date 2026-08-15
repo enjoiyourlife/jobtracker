@@ -44,7 +44,7 @@
           <input type="hidden" name="ats" value="{{ ats }}">
           <input type="hidden" name="slug" value="{{ slug }}">
           <button type="submit" class="chip" title="Remove {{ slug }}">
-            {{ slug }}
+            {{ slug | company_name }}
             <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           </button>
         </form>

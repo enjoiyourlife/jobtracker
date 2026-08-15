@@ -14,6 +14,7 @@ across requests, no extra state to reason about.
 
 from __future__ import annotations
 
+import re
 import webbrowser
 from threading import Lock, Thread, Timer
 
@@ -129,6 +130,26 @@ def _start_company_resolve(names: list[str]) -> bool:
 # instead of hoping Flask's default guess still lines up.
 app = Flask(__name__, template_folder=str(paths.bundled_resource("templates")))
 app.secret_key = "jobtracker-local"  # local-only tool; no real session security needed
+
+
+@app.template_filter("company_name")
+def _company_name(name: str) -> str:
+    """
+    Display-cased company name.
+
+    Greenhouse's API returns a real company_name ("Jane Street",
+    "Stripe") that this leaves untouched. Ashby and Lever expose no
+    such field, so their client modules fall back to the raw board
+    slug verbatim ("sentry", "hinge-health") — title-casing after
+    swapping separators for spaces turns that into "Sentry" and "Hinge
+    Health" without needing to know which ATS a given posting came
+    from. Not perfect (a squashed slug like "moderntreasury" has no
+    separator to recover "Modern Treasury" from), but strictly better
+    than showing a raw slug next to properly-cased names in the same list.
+    """
+    if not name:
+        return name
+    return re.sub(r"[-_]+", " ", name).title()
 
 
 @app.context_processor
