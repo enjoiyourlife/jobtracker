@@ -34,20 +34,42 @@ in the file this module never touches — the boards list,
 location.disallow and its country anchor, all structural section
 comments — survives because it's genuinely never rewritten, not
 because of any preservation logic.
+
+Every mutating function here (apply_editable, add_boards, remove_board)
+does read-modify-write against a single shared file with no OS-level
+locking of its own, and the GUI can trigger more than one of them
+concurrently — the company resolver runs in a background thread that
+chains straight into a poll trigger, and nothing stops a user from
+also hitting Settings' main Save while that's still running. Verified
+by reproduction, not just suspicion: two threads racing add_boards()
+against the same file corrupts it — sometimes silently wrong content,
+sometimes an unparseable file. _config_write_lock below serializes the
+three of them so a read-modify-write is always atomic relative to
+every other caller in this process.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedSeq
+from ruamel.yaml.tokens import CommentToken
 
 from jobtracker import paths
 
 CONFIG_PATH = paths.CONFIG_PATH
+
+# Guards every read AND every read-modify-write cycle against
+# config.yaml — see the module docstring for why this exists and how
+# its absence was found. Reentrant (not a plain Lock) because
+# apply_editable/add_boards/remove_board each hold it for their whole
+# read-modify-write and call load_raw() again internally — a plain
+# Lock would deadlock a thread against itself there.
+_config_write_lock = RLock()
 
 _yaml = YAML()
 _yaml.preserve_quotes = True
@@ -88,11 +110,12 @@ def _flow_list(items: list[str]) -> CommentedSeq:
 
 def load_raw(path: Path | None = None) -> Any:
     """The full config as a ruamel CommentedMap — comments and anchors intact."""
-    return _yaml.load((path or CONFIG_PATH).read_text())
+    with _config_write_lock:
+        return _yaml.load((path or CONFIG_PATH).read_text())
 
 
 def save_raw(data: Any, path: Path | None = None) -> None:
-    with (path or CONFIG_PATH).open("w") as fh:
+    with _config_write_lock, (path or CONFIG_PATH).open("w") as fh:
         _yaml.dump(data, fh)
 
 
@@ -133,6 +156,15 @@ def _replace_list(container: Any, key: str, items: list[str]) -> None:
     everything else (real per-item comments, which don't map onto a
     reordered/different list anyway) is discarded rather than risk
     silently reattaching stale text to the wrong item.
+
+    Emptying the list entirely (someone clears a Settings textarea and
+    saves) needs its own handling: ruamel dumps a cleared-then-empty
+    CommentedSeq as a bare `[]` at column 0 rather than inline as
+    `key: []`, under this file's custom block-sequence indent settings
+    — syntactically invalid in this position, and it corrupts every
+    line after it. Found by reproduction (clearing seniority.penalized
+    and saving broke the file), not by inspection. Forcing flow style
+    on the empty result is what makes ruamel emit it inline correctly.
     """
     existing = container.get(key)
     if isinstance(existing, CommentedSeq):
@@ -147,29 +179,32 @@ def _replace_list(container: Any, key: str, items: list[str]) -> None:
         existing.extend(items)
         if trailing is not None and items:
             existing.ca.items[len(items) - 1] = [trailing, None, None, None]
+        if not items:
+            existing.fa.set_flow_style()
     else:
-        container[key] = items
+        container[key] = items if items else _flow_list([])
 
 
 def apply_editable(settings: EditableSettings, path: Path | None = None) -> None:
     """Write `settings` back into config.yaml. See module docstring for what's preserved."""
-    raw = load_raw(path)
+    with _config_write_lock:
+        raw = load_raw(path)
 
-    raw["location"]["tiers"] = [
-        {"score": t.score, "match": _flow_list([c.strip() for c in t.cities.split(",") if c.strip()])}
-        for t in settings.tiers
-        if t.cities.strip()
-    ]
-    _replace_list(raw["role"], "include", settings.role_include)
-    _replace_list(raw["role"], "exclude", settings.role_exclude)
-    _replace_list(raw["seniority"], "preferred", settings.seniority_preferred)
-    _replace_list(raw["seniority"], "penalized", settings.seniority_penalized)
-    raw["experience"]["max_years"] = settings.max_years
-    raw["experience"]["penalty_per_year"] = settings.penalty_per_year
-    raw["min_score"] = settings.min_score
-    raw["browser"] = settings.browser
+        raw["location"]["tiers"] = [
+            {"score": t.score, "match": _flow_list([c.strip() for c in t.cities.split(",") if c.strip()])}
+            for t in settings.tiers
+            if t.cities.strip()
+        ]
+        _replace_list(raw["role"], "include", settings.role_include)
+        _replace_list(raw["role"], "exclude", settings.role_exclude)
+        _replace_list(raw["seniority"], "preferred", settings.seniority_preferred)
+        _replace_list(raw["seniority"], "penalized", settings.seniority_penalized)
+        raw["experience"]["max_years"] = settings.max_years
+        raw["experience"]["penalty_per_year"] = settings.penalty_per_year
+        raw["min_score"] = settings.min_score
+        raw["browser"] = settings.browser
 
-    save_raw(raw, path)
+        save_raw(raw, path)
 
 
 def add_boards(pairs: list[tuple[str, str]], path: Path | None = None) -> None:
@@ -180,17 +215,64 @@ def add_boards(pairs: list[tuple[str, str]], path: Path | None = None) -> None:
     resolving new companies from Settings should never silently drop
     ones already being polled. Duplicates are skipped rather than
     re-added, so resolving the same company twice is harmless.
+
+    A plain .append() on the target list isn't safe if that list's
+    current last item carries a comment — found by reproduction, not
+    inspection: boards.ashby's last item ("opensea") carries both its
+    own inline "# OpenSea" note and the "11 companies still unresolved"
+    section comment as ONE merged token (ruamel doesn't keep an inline
+    comment and a following blank-line-separated block as separate
+    tokens the way _replace_list's plainer cases did). Leaving that
+    token keyed to opensea's index after appending past it — no longer
+    the list's last item — made ruamel emit the new item outside the
+    boards: structure entirely: valid-looking YAML syntax, wrong
+    document shape.
+
+    A single-line inline note (no merged blank-line-separated block)
+    is safe to leave exactly where it is; only a token containing
+    "\\n\\n" — the blank line marking "this note is actually two
+    things" — gets split: the first part (the real per-item note)
+    stays on the old last item, the rest (the section comment) moves
+    to the new one, with the same blank-line separator re-added so it
+    still renders as a standalone block rather than an inline comment
+    on the new item. Splitting rather than moving the whole token
+    wholesale matters — the first version of this fix moved the entire
+    merged token, which fixed the structural corruption but then
+    mislabeled "notion" with opensea's own "# OpenSea" note; the second
+    version split it but dropped the blank-line separator, so the
+    section comment's first line rendered inline after "- notion"
+    instead of on its own line.
     """
-    raw = load_raw(path)
-    boards = raw.setdefault("boards", {})
-    for ats, slug in pairs:
-        existing = boards.get(ats)
-        if existing is None:
-            existing = []
-            boards[ats] = existing
-        if slug not in existing:
-            existing.append(slug)
-    save_raw(raw, path)
+    with _config_write_lock:
+        raw = load_raw(path)
+        boards = raw.setdefault("boards", {})
+        for ats, slug in pairs:
+            existing = boards.get(ats)
+            if existing is None:
+                existing = []
+                boards[ats] = existing
+            if slug in existing:
+                continue
+            if isinstance(existing, CommentedSeq) and len(existing) > 0:
+                old_last = len(existing) - 1
+                entry = existing.ca.items.get(old_last)
+                token = entry[0] if entry else None
+                existing.append(slug)
+                if token is not None and "\n\n" in token.value:
+                    inline_part, _, rest_part = token.value.partition("\n\n")
+                    existing.ca.items[old_last] = [
+                        CommentToken(inline_part + "\n", token.start_mark, token.end_mark),
+                        None, None, None,
+                    ]
+                    if rest_part.strip():
+                        new_last = len(existing) - 1
+                        existing.ca.items[new_last] = [
+                            CommentToken("\n\n" + rest_part, token.start_mark, token.end_mark),
+                            None, None, None,
+                        ]
+            else:
+                existing.append(slug)
+        save_raw(raw, path)
 
 
 def remove_board(ats: str, slug: str, path: Path | None = None) -> None:
@@ -203,9 +285,10 @@ def remove_board(ats: str, slug: str, path: Path | None = None) -> None:
     control per entry, so excluding a company is exactly as direct as
     including one was.
     """
-    raw = load_raw(path)
-    boards = raw.get("boards") or {}
-    existing = boards.get(ats)
-    if existing is not None and slug in existing:
-        existing.remove(slug)
-    save_raw(raw, path)
+    with _config_write_lock:
+        raw = load_raw(path)
+        boards = raw.get("boards") or {}
+        existing = boards.get(ats)
+        if existing is not None and slug in existing:
+            existing.remove(slug)
+        save_raw(raw, path)

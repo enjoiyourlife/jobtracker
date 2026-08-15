@@ -73,6 +73,15 @@ def _start_poll() -> bool:
                 criteria = Criteria.load()
                 _poll_state["boards_total"] = sum(len(s) for s in criteria.boards.values())
                 poll_all(conn, on_board_done=_board_done)
+        except Exception:
+            # Per-board failures are already caught inside poll_board;
+            # reaching here means something broke outside that (a
+            # malformed config.yaml, a DB connection failure) — rare,
+            # but a daemon thread dying with an unhandled traceback to
+            # a log nobody's watching isn't meaningfully "handled"
+            # either way. At minimum the button un-disables so a retry
+            # is possible instead of looking permanently stuck.
+            pass
         finally:
             _poll_state["running"] = False
 
@@ -104,20 +113,33 @@ def _start_company_resolve(names: list[str]) -> bool:
         _resolve_state["missing"] = []
 
     def worker() -> None:
+        found: list = []
         try:
             results = resolve_all(names)
             found = [r for r in results if r.resolved]
             add_boards([(r.ats, r.slug) for r in found])
             _resolve_state["found"] = [r.name for r in found]
             _resolve_state["missing"] = [r.name for r in results if not r.resolved]
+        except Exception:
+            # A daemon thread that raises doesn't crash the app — Python
+            # just prints the traceback to stderr and moves on — but
+            # "silently prints to a log nobody's watching" isn't the
+            # same as handling it. Treating every requested name as
+            # unresolved means the user still sees *something* went
+            # wrong on Settings instead of the request just vanishing.
+            _resolve_state["found"] = []
+            _resolve_state["missing"] = names
         finally:
             _resolve_state["running"] = False
-        # Chained on purpose: newly added companies have zero postings
-        # until something actually polls them, so "add companies" that
-        # doesn't lead into fetching their jobs would just relocate the
-        # "now what?" moment instead of resolving it.
-        if found:
-            _start_poll()
+            # Chained on purpose: newly added companies have zero
+            # postings until something actually polls them, so "add
+            # companies" that doesn't lead into fetching their jobs
+            # would just relocate the "now what?" moment instead of
+            # resolving it. Inside finally (not after) so a mid-resolve
+            # exception can't skip past it with `found` still empty —
+            # `found` is seeded to [] up front for exactly that case.
+            if found:
+                _start_poll()
 
     Thread(target=worker, daemon=True).start()
     return True
@@ -342,8 +364,8 @@ def settings():
             role_exclude=_lines(request.form.get("role_exclude", "")),
             seniority_preferred=preferred,
             seniority_penalized=penalized,
-            max_years=int(request.form.get("max_years", 2)),
-            penalty_per_year=int(request.form.get("penalty_per_year", 15)),
+            max_years=_safe_int(request.form.get("max_years"), default=2),
+            penalty_per_year=_safe_int(request.form.get("penalty_per_year"), default=15),
             min_score=presets.STRICTNESS_LEVELS[request.form.get("strictness", "balanced")],
             browser=request.form.get("browser", browser_launcher.SYSTEM_DEFAULT),
         )
@@ -380,6 +402,20 @@ def settings():
 def _lines(text: str) -> list[str]:
     """Textarea contents -> one entry per non-blank line."""
     return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _safe_int(value: str | None, *, default: int) -> int:
+    """
+    Parse a form number field, falling back to `default` rather than
+    raising — request.form.get(key, default) only returns the default
+    when the key is absent, not when it's present but empty, and a
+    cleared <input type=number> still submits as "". Without this,
+    clearing that field and clicking Save 500s instead of saving.
+    """
+    try:
+        return int(value) if value else default
+    except ValueError:
+        return default
 
 
 def run(host: str = "127.0.0.1", port: int = 8765, native_window: bool = True) -> None:

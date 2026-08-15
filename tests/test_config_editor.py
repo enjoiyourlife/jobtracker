@@ -207,6 +207,47 @@ class TestAddBoards:
         assert load_editable(path).boards["greenhouse"] == ["stripe"]
 
 
+class TestAddBoardsPreservesTrailingSectionComment:
+    """
+    Regression coverage for real, reproduced corruption: appending to
+    boards.ashby in the actual config.yaml broke the file, because its
+    last item ("opensea") carries a single merged CommentToken holding
+    both its own inline "# OpenSea" note and the entire "11 companies
+    still unresolved" section comment that follows, joined by a blank
+    line. A plain .append() leaves that token keyed to opensea's old
+    index — no longer the list's last item — and ruamel then emits the
+    new item outside the boards: structure entirely.
+
+    Two prior fix attempts were each wrong in their own way (see
+    add_boards's docstring): moving the whole token mislabeled the new
+    item with opensea's own note; splitting the token without
+    preserving the blank-line separator put the section comment's first
+    line inline after the new item instead of on its own line. This
+    checks the actually-correct end state: both original items keep
+    their own comments untouched in meaning, and the section comment
+    still reads as a standalone block, not text attached to "notion".
+    """
+
+    def test_opensea_keeps_its_own_note_and_the_section_comment_stays_standalone(self, tmp_path):
+        import shutil
+
+        path = tmp_path / "config.yaml"
+        shutil.copy(REAL_CONFIG_PATH, path)
+
+        add_boards([("ashby", "notion")], path)
+
+        result = path.read_text()
+        assert "- opensea             # OpenSea\n" in result
+        assert "- notion\n" in result
+        assert "- notion              #" not in result  # nothing misattached inline
+        assert "\n\n# 11 companies from companies.txt are still unresolved" in result
+
+        assert load_editable(path).boards["ashby"][-2:] == ["opensea", "notion"]
+
+        import yaml as pyyaml
+        pyyaml.safe_load(result)  # still valid, and still parses under the read-time loader too
+
+
 class TestRemoveBoard:
     def test_removes_an_existing_slug(self, tmp_path):
         path = tmp_path / "config.yaml"
@@ -240,3 +281,116 @@ class TestRemoveBoard:
         remove_board("greenhouse", "figma", path)
 
         assert load_editable(path).boards["greenhouse"] == ["acme"]
+
+
+class TestEmptyingAListDoesNotCorruptTheFile:
+    """
+    Regression coverage for a real, fully single-threaded bug: clearing
+    a Settings textarea to empty and saving corrupted config.yaml.
+    ruamel dumped the cleared CommentedSeq as a bare `[]` at column 0
+    instead of inline as `key: []`, which isn't valid in that position
+    and breaks parsing for everything after it. Reproduced against the
+    real file, not MINIMAL_CONFIG — found by testing the actual
+    anchor-bearing file, and that's the only copy proven to trigger it.
+    """
+
+    def _round_trip_with_empty(self, tmp_path, field: str) -> None:
+        import shutil
+        import yaml as pyyaml
+
+        path = tmp_path / "config.yaml"
+        shutil.copy(REAL_CONFIG_PATH, path)
+
+        current = load_editable(path)
+        kwargs = current.__dict__.copy()
+        kwargs[field] = []
+        apply_editable(EditableSettings(**kwargs), path)
+
+        pyyaml.safe_load(path.read_text())  # must not raise
+
+    def test_empty_role_include(self, tmp_path):
+        self._round_trip_with_empty(tmp_path, "role_include")
+
+    def test_empty_role_exclude(self, tmp_path):
+        self._round_trip_with_empty(tmp_path, "role_exclude")
+
+    def test_empty_seniority_preferred(self, tmp_path):
+        self._round_trip_with_empty(tmp_path, "seniority_preferred")
+
+    def test_empty_seniority_penalized(self, tmp_path):
+        self._round_trip_with_empty(tmp_path, "seniority_penalized")
+
+    def test_the_emptied_field_is_actually_saved_as_empty(self, tmp_path):
+        """Not just 'doesn't crash' — the empty save has to actually
+        stick, not silently keep the old values."""
+        import shutil
+
+        path = tmp_path / "config.yaml"
+        shutil.copy(REAL_CONFIG_PATH, path)
+
+        current = load_editable(path)
+        kwargs = current.__dict__.copy()
+        kwargs["seniority_penalized"] = []
+        apply_editable(EditableSettings(**kwargs), path)
+
+        assert load_editable(path).seniority_penalized == []
+
+
+class TestConcurrentAccess:
+    """
+    Regression coverage for actual, reproduced file corruption: this
+    module had no locking at all, and two threads racing add_boards()
+    against the same file corrupted it — sometimes wrong content,
+    sometimes an unparseable file. This isn't a synthetic worry; it's
+    what broke when the GUI's "resolve a company" background thread
+    (which chains straight into a poll trigger) happened to run
+    alongside another Settings action.
+
+    Not fully deterministic by nature of testing real threads, but with
+    enough concurrent readers and writers this reliably reproduced the
+    corruption before the fix and reliably doesn't after.
+    """
+
+    def test_concurrent_writes_and_reads_never_corrupt_the_file(self, tmp_path):
+        import shutil
+        import threading
+
+        import yaml as pyyaml
+
+        path = tmp_path / "config.yaml"
+        shutil.copy(REAL_CONFIG_PATH, path)
+        errors: list[Exception] = []
+
+        def add_worker(name: str) -> None:
+            try:
+                add_boards([("greenhouse", name)], path)
+            except Exception as exc:
+                errors.append(exc)
+
+        def settings_worker() -> None:
+            try:
+                apply_editable(load_editable(path), path)
+            except Exception as exc:
+                errors.append(exc)
+
+        def read_worker() -> None:
+            try:
+                for _ in range(5):
+                    load_editable(path)
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = (
+            [threading.Thread(target=add_worker, args=(f"race{i}",)) for i in range(6)]
+            + [threading.Thread(target=settings_worker) for _ in range(4)]
+            + [threading.Thread(target=read_worker) for _ in range(6)]
+        )
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+        data = pyyaml.safe_load(path.read_text())  # must still parse
+        added = sorted(s for s in data["boards"]["greenhouse"] if s.startswith("race"))
+        assert added == [f"race{i}" for i in range(6)]  # every write landed, none lost
