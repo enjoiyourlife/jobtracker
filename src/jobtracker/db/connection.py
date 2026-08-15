@@ -52,6 +52,14 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
     # Write-ahead logging: readers don't block the writer.
     conn.execute("PRAGMA journal_mode = WAL")
 
+    # A single board can carry thousands of postings (Anduril's does),
+    # and upserting them all happens inside one transaction before the
+    # poller's commit — long enough to blow past sqlite3's 5-second
+    # default busy timeout if a page load lands mid-write while the
+    # GUI's background poll thread is running. 30s gives a concurrent
+    # writer room to just wait instead of surfacing "database is locked".
+    conn.execute("PRAGMA busy_timeout = 30000")
+
     conn.executescript(_load_schema())
     conn.commit()
 

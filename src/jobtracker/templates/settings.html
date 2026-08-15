@@ -2,6 +2,59 @@
 {% block title %}Settings — jobtracker{% endblock %}
 {% block content %}
 <h1>Settings</h1>
+
+<fieldset>
+  <legend>Which companies should be tracked?</legend>
+  <small>
+    {{ company_count }} compan{{ 'y' if company_count == 1 else 'ies' }} configured.
+    Type company names below — each one is looked up automatically against Greenhouse, Lever, and Ashby
+    and added if a live board is found.
+  </small>
+
+  {% if resolve_found %}
+  <div class="flash" style="margin-top: var(--sp-3);">
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Added: {{ resolve_found|join(', ') }}
+  </div>
+  {% endif %}
+  {% if resolve_missing %}
+  <div class="empty" style="text-align:left; padding: var(--sp-3) var(--sp-4); margin-top: var(--sp-2);">
+    Couldn't find a board for: {{ resolve_missing|join(', ') }} — they may use a different ATS
+    (Workday, Jobvite, etc., which jobtracker doesn't support yet), or need their exact legal name.
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('add_companies') }}" style="margin-top: var(--sp-3);">
+    <label style="margin-top:0;">Company names — one per line</label>
+    <small>e.g. Stripe, Figma, Anduril Industries</small>
+    <textarea name="company_names" rows="4" placeholder="Stripe&#10;Figma&#10;Anduril Industries"></textarea>
+    <button type="submit" class="btn btn-primary" style="margin-top: var(--sp-3);" {{ 'disabled' if resolving_companies else '' }}>
+      <svg viewBox="0 0 20 20" fill="none"><path d="M13 13l4 4M4 9a5 5 0 1010 0 5 5 0 00-10 0z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      {{ 'Looking up…' if resolving_companies else 'Look up and add' }}
+    </button>
+  </form>
+
+  {% if company_count %}
+  <details style="margin-top: var(--sp-4);">
+    <summary>Currently tracked ({{ company_count }}) — click any to remove it</summary>
+    <div style="display:flex; flex-wrap:wrap; gap: 6px; margin-top: var(--sp-3);">
+      {% for ats, slugs in settings.boards.items() %}
+        {% for slug in slugs %}
+        <form method="post" action="{{ url_for('remove_company') }}" style="display:contents;">
+          <input type="hidden" name="ats" value="{{ ats }}">
+          <input type="hidden" name="slug" value="{{ slug }}">
+          <button type="submit" class="chip" title="Remove {{ slug }}">
+            {{ slug }}
+            <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </form>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</fieldset>
+
 <form method="post">
   <fieldset>
     <legend>Where do you want to work?</legend>
@@ -13,7 +66,7 @@
         <option value="{{ key }}" {{ 'selected' if t.priority == key else '' }}>{{ label }}</option>
         {% endfor %}
       </select>
-      <input type="text" name="tier_cities" value="{{ t.cities }}" placeholder="seattle, bellevue, redmond">
+      <input type="text" name="tier_cities" class="city-input" autocomplete="off" value="{{ t.cities }}" placeholder="seattle, bellevue, redmond">
     </div>
     {% endfor %}
     <div class="tier-row">
@@ -22,12 +75,20 @@
         <option value="{{ key }}" {{ 'selected' if key == 'medium' else '' }}>{{ label }}</option>
         {% endfor %}
       </select>
-      <input type="text" name="tier_cities" value="" placeholder="add another place…">
+      <input type="text" name="tier_cities" class="city-input" autocomplete="off" value="" placeholder="add another place…">
     </div>
     <label class="checkbox-row" style="margin-top: var(--sp-4);">
       <input type="checkbox" name="remote_ok" {{ 'checked' if remote_on else '' }}>
       Also show remote-eligible roles
     </label>
+    <label class="checkbox-row">
+      <input type="checkbox" name="hybrid_ok" {{ 'checked' if hybrid_on else '' }}>
+      Also show hybrid roles
+    </label>
+    <small style="margin: var(--sp-1) 0 0;">
+      Only catches postings that literally say "hybrid" in their location — some hybrid roles just list
+      a city instead, which your priority list above already covers.
+    </small>
   </fieldset>
 
   <fieldset>
@@ -96,4 +157,62 @@
     Save
   </button>
 </form>
+
+<script>
+// Per-segment autocomplete for the comma-separated city fields. Native
+// <datalist> matches against the whole input value, which breaks down
+// the moment there's more than one city typed — this instead looks at
+// only the text after the last comma, since that's the segment
+// actually being typed.
+(function () {
+  const CITIES = {{ us_cities | tojson }};
+
+  function attach(input) {
+    let box = null;
+    const close = () => { if (box) { box.remove(); box = null; } };
+
+    const segment = () => {
+      const v = input.value;
+      return v.slice(v.lastIndexOf(",") + 1).trim();
+    };
+
+    const show = () => {
+      close();
+      const seg = segment().toLowerCase();
+      if (!seg) return;
+      const matches = CITIES.filter((c) => c.toLowerCase().includes(seg)).slice(0, 6);
+      if (!matches.length) return;
+
+      box = document.createElement("div");
+      box.className = "autocomplete-box";
+      matches.forEach((city) => {
+        const item = document.createElement("div");
+        item.className = "autocomplete-item";
+        item.textContent = city;
+        item.onmousedown = (e) => {
+          e.preventDefault();
+          const v = input.value;
+          const lastComma = v.lastIndexOf(",");
+          const prefix = lastComma >= 0 ? v.slice(0, lastComma + 1) + " " : "";
+          input.value = prefix + city + ", ";
+          close();
+          input.focus();
+        };
+        box.appendChild(item);
+      });
+
+      const rect = input.getBoundingClientRect();
+      box.style.left = rect.left + "px";
+      box.style.top = rect.bottom + 4 + "px";
+      box.style.width = rect.width + "px";
+      document.body.appendChild(box);
+    };
+
+    input.addEventListener("input", show);
+    input.addEventListener("blur", () => setTimeout(close, 150));
+  }
+
+  document.querySelectorAll(".city-input").forEach(attach);
+})();
+</script>
 {% endblock %}

@@ -3,7 +3,7 @@
 {% block content %}
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--sp-5);">
   <h1 style="margin:0;">Queue</h1>
-  <span style="color:var(--text-2); font-size:13px;">{{ entries|length }} awaiting decision</span>
+  <span id="queue-count" style="color:var(--text-2); font-size:13px;">{{ entries|length }} awaiting decision</span>
 </div>
 
 <form method="get" style="margin-bottom: var(--sp-5);">
@@ -15,31 +15,67 @@
 </form>
 
 {% if not entries %}
-  <div class="empty">Queue empty. Poll for new postings, lower the strictness in Settings, or clear the entry-level filter.</div>
+  <div class="empty" id="queue-empty">
+    {% if not has_boards %}
+      No companies configured yet.<br>
+      <a href="{{ url_for('settings') }}" class="btn btn-primary" style="margin-top: var(--sp-3);">
+        <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.7"/><path d="M10 2.6v2M10 15.4v2M17.4 10h-2M4.6 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3L4.9 4.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        Go to Settings
+      </a>
+    {% else %}
+      Queue empty.<br>
+      <form method="post" action="{{ url_for('poll') }}" style="display:inline;">
+        <button type="submit" class="btn btn-primary" style="margin-top: var(--sp-3);" {{ 'disabled' if polling_in_progress else '' }}>
+          <svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-6.32 4M3 3v4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          {{ 'Polling…' if polling_in_progress else 'Poll for new postings' }}
+        </button>
+      </form>
+      <br><small style="margin-top: var(--sp-2);">Or lower the strictness in Settings, or clear the entry-level filter.</small>
+    {% endif %}
+  </div>
 {% endif %}
 
+<div id="queue-list">
 {% for e in entries %}
-{% set tier = 'score-high' if e.score >= 50 else ('score-mid' if e.score >= 30 else 'score-low') %}
-<div class="posting">
-  <div class="posting-top">
-    <h3>{{ e.title }}</h3>
-    <span class="score-badge {{ tier }}">{{ e.score }}</span>
-  </div>
-  <div class="meta">{{ e.company }} &middot; {{ e.location or "—" }}</div>
-  <div class="actions">
-    <a class="btn btn-primary" href="{{ url_for('apply', job_id=e.job_id) }}">
-      <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      Apply
-    </a>
-    <a class="btn btn-ghost" href="{{ url_for('skip', job_id=e.job_id) }}">
-      <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      Skip
-    </a>
-    <a class="btn btn-ghost" href="{{ e.url }}" target="_blank" rel="noopener">
-      <svg viewBox="0 0 20 20" fill="none"><path d="M8 5H5a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M12 4h4v4M15.5 4.5L9 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      View posting
-    </a>
-  </div>
-</div>
+  {% include "_posting_card.html" %}
 {% endfor %}
+</div>
+
+<script>
+// Incremental refresh while a poll/resolve is running: fetch just the
+// current entry list and insert only the ones not already on screen,
+// with a fade-in. Never re-renders what's already there, so a full
+// reload never yanks the page out from under someone mid-read or
+// mid-scroll — the actual complaint the jarring version had.
+(function () {
+  const list = document.getElementById("queue-list");
+  const countEl = document.getElementById("queue-count");
+  if (!list || !window.jobtrackerStatus) return;
+
+  async function refresh() {
+    const params = new URLSearchParams(window.location.search);
+    const res = await fetch("{{ url_for('queue_data') }}?" + params.toString());
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const existingIds = new Set(
+      Array.from(list.querySelectorAll("[data-job-id]")).map((el) => el.dataset.jobId)
+    );
+    for (const entry of data.entries) {
+      if (existingIds.has(String(entry.job_id))) continue;
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = entry.html.trim();
+      const card = wrapper.firstElementChild;
+      card.classList.add("posting-enter");
+      list.prepend(card);
+      requestAnimationFrame(() => card.classList.add("posting-enter-active"));
+    }
+    if (countEl) countEl.textContent = data.count + " awaiting decision";
+    const empty = document.getElementById("queue-empty");
+    if (empty && data.count > 0) empty.style.display = "none";
+  }
+
+  window.jobtrackerStatus.onUpdate(refresh);
+})();
+</script>
 {% endblock %}

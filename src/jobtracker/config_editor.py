@@ -76,6 +76,7 @@ class EditableSettings:
     penalty_per_year: int = 15
     min_score: int = 0
     browser: str = "system"  # which browser "Apply" opens postings in — see browser_launcher.py
+    boards: dict[str, list[str]] = field(default_factory=dict)  # display only — see add_boards() to change these
 
 
 def _flow_list(items: list[str]) -> CommentedSeq:
@@ -110,6 +111,7 @@ def load_editable(path: Path | None = None) -> EditableSettings:
         penalty_per_year=int(raw["experience"].get("penalty_per_year", 15)),
         min_score=int(raw.get("min_score", 0)),
         browser=str(raw.get("browser", "system")),
+        boards={ats: list(slugs or []) for ats, slugs in (raw.get("boards") or {}).items()},
     )
 
 
@@ -167,4 +169,43 @@ def apply_editable(settings: EditableSettings, path: Path | None = None) -> None
     raw["min_score"] = settings.min_score
     raw["browser"] = settings.browser
 
+    save_raw(raw, path)
+
+
+def add_boards(pairs: list[tuple[str, str]], path: Path | None = None) -> None:
+    """
+    Append (ats, slug) pairs into config.yaml's boards section.
+
+    Additive, not a replacement like apply_editable's other fields —
+    resolving new companies from Settings should never silently drop
+    ones already being polled. Duplicates are skipped rather than
+    re-added, so resolving the same company twice is harmless.
+    """
+    raw = load_raw(path)
+    boards = raw.setdefault("boards", {})
+    for ats, slug in pairs:
+        existing = boards.get(ats)
+        if existing is None:
+            existing = []
+            boards[ats] = existing
+        if slug not in existing:
+            existing.append(slug)
+    save_raw(raw, path)
+
+
+def remove_board(ats: str, slug: str, path: Path | None = None) -> None:
+    """
+    Remove one (ats, slug) from config.yaml's boards section.
+
+    The other half of add_boards() — Settings lists whatever's
+    currently configured (starter catalog or your own additions, no
+    distinction between them once they're in the file) with a remove
+    control per entry, so excluding a company is exactly as direct as
+    including one was.
+    """
+    raw = load_raw(path)
+    boards = raw.get("boards") or {}
+    existing = boards.get(ats)
+    if existing is not None and slug in existing:
+        existing.remove(slug)
     save_raw(raw, path)

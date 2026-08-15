@@ -8,9 +8,11 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = ["httpx", "pyyaml", "anthropic", "python-dotenv", "flask", "ruamel.yaml", "pywebview"]
 
-# Installs a `jobtracker` command on PATH that calls cli.main().
+# jobtracker: the full CLI. jobtracker-app: GUI-only, no arguments —
+# what a double-clicked packaged app actually runs (see app_main.py).
 [project.scripts]
 jobtracker = "jobtracker.cli:main"
+jobtracker-app = "jobtracker.app_main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -12,7 +12,9 @@ from jobtracker.settings_presets import (
     closest_priority,
     closest_strictness,
     guess_experience_level,
+    split_hybrid,
     split_remote,
+    with_hybrid,
     with_remote,
 )
 
@@ -91,3 +93,41 @@ class TestRemoteSplit:
         ]
         cities, remote_on = split_remote(original)
         assert with_remote(cities, remote_on) == original
+
+
+class TestHybridSplit:
+    def test_detects_hybrid_tier(self):
+        tiers = [Tier(score=40, cities="seattle, bellevue"), Tier(score=20, cities="hybrid")]
+        cities, hybrid_on = split_hybrid(tiers)
+        assert hybrid_on is True
+        assert cities == [Tier(score=40, cities="seattle, bellevue")]
+
+    def test_no_hybrid_tier_present(self):
+        tiers = [Tier(score=40, cities="seattle, bellevue")]
+        cities, hybrid_on = split_hybrid(tiers)
+        assert hybrid_on is False
+        assert cities == tiers
+
+    def test_with_hybrid_reattaches_when_on(self):
+        cities = [Tier(score=40, cities="seattle")]
+        result = with_hybrid(cities, hybrid_on=True)
+        assert len(result) == 2
+        assert result[1].cities == "hybrid"
+
+    def test_with_hybrid_no_op_when_off(self):
+        cities = [Tier(score=40, cities="seattle")]
+        assert with_hybrid(cities, hybrid_on=False) == cities
+
+    def test_remote_and_hybrid_coexist_independently(self):
+        """Both toggles can be on at once, and splitting one must not
+        disturb the other — they're stored as two separate tiers."""
+        tiers = [
+            Tier(score=40, cities="seattle"),
+            Tier(score=25, cities="remote, remote - us, united states"),
+            Tier(score=20, cities="hybrid"),
+        ]
+        cities, remote_on = split_remote(tiers)
+        cities, hybrid_on = split_hybrid(cities)
+        assert remote_on is True
+        assert hybrid_on is True
+        assert cities == [Tier(score=40, cities="seattle")]

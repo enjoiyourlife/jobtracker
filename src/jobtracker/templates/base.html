@@ -82,7 +82,25 @@
     background: var(--sidebar-bg);
     border-right: 1px solid var(--border);
     padding: 44px var(--sp-3) var(--sp-4);
+    display: flex; flex-direction: column;
     -webkit-app-region: drag; /* lets the empty sidebar area drag the native window */
+  }
+  .sidebar-spacer { flex: 1; }
+  .poll-btn {
+    -webkit-app-region: no-drag;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    width: 100%; padding: 8px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong); background: var(--surface);
+    color: var(--text); font: inherit; font-weight: 600; font-size: 12.5px;
+    cursor: pointer; transition: background .15s ease, opacity .15s ease;
+  }
+  .poll-btn svg { width: 14px; height: 14px; }
+  .poll-btn:hover { background: var(--row-hover); }
+  .poll-btn:disabled { opacity: .55; cursor: default; }
+  .poll-btn .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .flash-info {
+    background: var(--accent-tint); border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   }
   .brand {
     display: flex; align-items: center; gap: 8px; padding: 0 var(--sp-2);
@@ -221,6 +239,32 @@
   }
   details[open] summary::before { transform: rotate(45deg); }
   summary:hover { color: var(--text); }
+
+  .autocomplete-box {
+    position: fixed; z-index: 50; max-height: 220px; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+    padding: 4px;
+  }
+  .autocomplete-item {
+    padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  }
+  .autocomplete-item:hover { background: var(--accent); color: #fff; }
+
+  /* New postings fading in during a live poll — never applied to
+     anything already on screen, so existing cards never move or flash. */
+  .posting-enter { opacity: 0; transform: translateY(-6px) scale(.98); }
+  .posting-enter-active { opacity: 1; transform: none; transition: opacity .35s cubic-bezier(.4,0,.2,1), transform .35s cubic-bezier(.4,0,.2,1); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 6px 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border-strong); background: var(--surface-2);
+    color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+  .chip svg { width: 11px; height: 11px; opacity: .7; }
+  .chip:hover { background: color-mix(in srgb, var(--danger) 12%, var(--surface-2)); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 </style>
 </head>
 <body>
@@ -243,9 +287,31 @@
     <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.7"/><path d="M10 2.6v2M10 15.4v2M17.4 10h-2M4.6 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3L4.9 4.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
     Settings
   </a>
+  <div class="sidebar-spacer"></div>
+  <form method="post" action="{{ url_for('poll') }}">
+    <button type="submit" class="poll-btn" {{ 'disabled' if polling_in_progress else '' }}>
+      {% if polling_in_progress %}
+        <svg class="spin" viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Polling…
+      {% else %}
+        <svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-6.32 4M3 3v4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Poll for new postings
+      {% endif %}
+    </button>
+  </form>
 </aside>
 <div class="content">
 <main>
+<div class="flash flash-info" id="status-banner" style="{{ '' if (polling_in_progress or resolving_companies) else 'display:none;' }}">
+  <svg class="spin" width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+  <span class="status-text">
+    {%- if resolving_companies -%}
+      Looking up companies…
+    {%- else -%}
+      Polling boards for new postings ({{ poll_boards_done }}/{{ poll_boards_total }})…
+    {%- endif -%}
+  </span>
+</div>
 {% with messages = get_flashed_messages() %}
   {% for m in messages %}
   <div class="flash">
@@ -257,5 +323,47 @@
 {% block content %}{% endblock %}
 </main>
 </div>
+<script>
+// Shared status poller — every page gets a live-updating banner with
+// no full-page reload, which would yank the page out from under
+// anyone reading or scrolling (the queue page listens via onUpdate()
+// to also fetch fresh entries and fade them in, rather than reloading).
+window.jobtrackerStatus = (function () {
+  const listeners = [];
+  let wasRunning = false;
+
+  function updateBanner(status) {
+    const banner = document.getElementById("status-banner");
+    if (!banner) return;
+    const text = banner.querySelector(".status-text");
+    if (status.resolving) {
+      banner.style.display = "";
+      text.textContent = "Looking up companies…";
+    } else if (status.polling) {
+      banner.style.display = "";
+      text.textContent = `Polling boards for new postings (${status.poll_done}/${status.poll_total})…`;
+    } else {
+      banner.style.display = "none";
+    }
+  }
+
+  async function tick() {
+    try {
+      const res = await fetch("{{ url_for('poll_status') }}");
+      if (res.ok) {
+        const status = await res.json();
+        updateBanner(status);
+        const running = status.polling || status.resolving;
+        if (running || wasRunning) listeners.forEach((fn) => fn(status));
+        wasRunning = running;
+      }
+    } catch (e) { /* transient network hiccup — try again next tick */ }
+    setTimeout(tick, 2500);
+  }
+
+  tick();
+  return { onUpdate: (fn) => listeners.push(fn) };
+})();
+</script>
 </body>
 </html>

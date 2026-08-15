@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+from typing import Callable
 
 from jobtracker.ats import get_client
 from jobtracker.ats.base import ATSError
@@ -90,6 +91,33 @@ def poll_board(conn: sqlite3.Connection, ats: str, slug: str) -> None:
         print(f"{ats}:{slug}: FAILED — {exc}", file=sys.stderr)
 
 
+def poll_all(
+    conn: sqlite3.Connection,
+    on_board_done: Callable[[str, str], None] | None = None,
+) -> list[tuple[str, str]]:
+    """
+    Poll every board configured in config.yaml.
+
+    Returns the (ats, slug) pairs attempted, so a caller (the CLI, or
+    the GUI's background poll trigger) can report how many boards it
+    covered without asking twice — reading config.yaml is the same
+    question as "what did you poll," so this answers both at once.
+
+    on_board_done, if given, fires after each board completes (success
+    or failure) — the GUI's progress counter needs to update as boards
+    finish, not just once the whole run is done, and adding a callback
+    here keeps that one loop the only place polling is orchestrated
+    rather than the GUI reimplementing it to get live progress.
+    """
+    criteria = Criteria.load()
+    targets = [(ats, slug) for ats, slugs in criteria.boards.items() for slug in slugs]
+    for ats, slug in targets:
+        poll_board(conn, ats, slug)
+        if on_board_done:
+            on_board_done(ats, slug)
+    return targets
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Poll ATS job boards.")
     parser.add_argument(
@@ -101,19 +129,14 @@ def main() -> int:
     if args.slugs and not args.ats:
         parser.error("--ats is required when slugs are given")
 
-    if args.slugs:
-        targets: list[tuple[str, str]] = [(args.ats, s) for s in args.slugs]
-    else:
-        criteria = Criteria.load()
-        targets = [
-            (ats, slug) for ats, slugs in criteria.boards.items() for slug in slugs
-        ]
-        if not targets:
-            parser.error("no boards configured in config.yaml")
-
     with session() as conn:
-        for ats, slug in targets:
-            poll_board(conn, ats, slug)
+        if args.slugs:
+            for slug in args.slugs:
+                poll_board(conn, args.ats, slug)
+        else:
+            targets = poll_all(conn)
+            if not targets:
+                parser.error("no boards configured in config.yaml")
 
     return 0
 

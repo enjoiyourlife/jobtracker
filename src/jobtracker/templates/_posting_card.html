@@ -1,0 +1,22 @@
+{% set tier = 'score-high' if e.score >= 50 else ('score-mid' if e.score >= 30 else 'score-low') %}
+<div class="posting" data-job-id="{{ e.job_id }}">
+  <div class="posting-top">
+    <h3>{{ e.title }}</h3>
+    <span class="score-badge {{ tier }}">{{ e.score }}</span>
+  </div>
+  <div class="meta">{{ e.company }} &middot; {{ e.location or "—" }}</div>
+  <div class="actions">
+    <a class="btn btn-primary" href="{{ url_for('apply', job_id=e.job_id) }}">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Apply
+    </a>
+    <a class="btn btn-ghost" href="{{ url_for('skip', job_id=e.job_id) }}">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      Skip
+    </a>
+    <a class="btn btn-ghost" href="{{ e.url }}" target="_blank" rel="noopener">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M8 5H5a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M12 4h4v4M15.5 4.5L9 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      View posting
+    </a>
+  </div>
+</div>

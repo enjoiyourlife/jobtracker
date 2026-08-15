@@ -15,23 +15,112 @@ across requests, no extra state to reason about.
 from __future__ import annotations
 
 import webbrowser
-from threading import Thread, Timer
+from threading import Lock, Thread, Timer
 
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, flash, redirect, render_template, request, url_for
 
 from jobtracker import browser_launcher, paths
 from jobtracker import settings_presets as presets
-from jobtracker.config_editor import EditableSettings, Tier, apply_editable, load_editable
+from jobtracker.config_editor import (
+    EditableSettings,
+    Tier,
+    add_boards,
+    apply_editable,
+    load_editable,
+    remove_board,
+)
 from jobtracker.db import applications as apps
 from jobtracker.db.applications import GHOST_THRESHOLD_DAYS
 from jobtracker.db.connection import session
 from jobtracker.filters import Criteria
+from jobtracker.poller import poll_all
 from jobtracker.queries import scored_jobs
+from jobtracker.resolver import resolve_all
+from jobtracker.us_cities import US_TECH_CITIES
 
 PIPELINE_ORDER = [
     "queued", "skipped", "submitted", "acknowledged",
     "screening", "interview", "offer", "rejected",
 ]
+
+# Polling can take from seconds to a couple minutes depending on how
+# many boards are configured — too long to hold a request open, so it
+# runs in a background thread and this is the only shared state this
+# module has. A lock instead of just checking the flag: two rapid
+# clicks on "Poll now" starting two overlapping poll runs would be a
+# real, if minor, bug (double-counted board fetches racing on the same
+# connection-per-board pattern), not just wasted work.
+_poll_lock = Lock()
+_poll_state = {"running": False, "boards_done": 0, "boards_total": 0}
+
+
+def _start_poll() -> bool:
+    """Kick off a background poll. Returns False if one's already running."""
+    with _poll_lock:
+        if _poll_state["running"]:
+            return False
+        _poll_state["running"] = True
+        _poll_state["boards_done"] = 0
+        _poll_state["boards_total"] = 0
+
+    def _board_done(ats: str, slug: str) -> None:
+        _poll_state["boards_done"] += 1
+
+    def worker() -> None:
+        try:
+            with session() as conn:
+                criteria = Criteria.load()
+                _poll_state["boards_total"] = sum(len(s) for s in criteria.boards.values())
+                poll_all(conn, on_board_done=_board_done)
+        finally:
+            _poll_state["running"] = False
+
+    Thread(target=worker, daemon=True).start()
+    return True
+
+
+# Same background-thread-plus-lock pattern as polling, for the same
+# reason: resolving a company can take several seconds (up to ~12
+# probes across 3 ATSes, each with a courtesy delay), and a list of
+# them would block a request far too long.
+#
+# Results go in this dict rather than through flash() — flash() needs
+# an active request/session to write its cookie back through, which a
+# background thread finishing after its triggering request already
+# returned doesn't have. Settings reads found/missing directly instead,
+# the same way it already reads polling_in_progress.
+_resolve_lock = Lock()
+_resolve_state: dict = {"running": False, "found": [], "missing": []}
+
+
+def _start_company_resolve(names: list[str]) -> bool:
+    """Kick off a background resolve-and-add. Returns False if one's already running."""
+    with _resolve_lock:
+        if _resolve_state["running"]:
+            return False
+        _resolve_state["running"] = True
+        _resolve_state["found"] = []
+        _resolve_state["missing"] = []
+
+    def worker() -> None:
+        try:
+            results = resolve_all(names)
+            found = [r for r in results if r.resolved]
+            add_boards([(r.ats, r.slug) for r in found])
+            _resolve_state["found"] = [r.name for r in found]
+            _resolve_state["missing"] = [r.name for r in results if not r.resolved]
+        finally:
+            _resolve_state["running"] = False
+        # Chained on purpose: newly added companies have zero postings
+        # until something actually polls them, so "add companies" that
+        # doesn't lead into fetching their jobs would just relocate the
+        # "now what?" moment instead of resolving it.
+        if found:
+            _start_poll()
+
+    Thread(target=worker, daemon=True).start()
+    return True
+
 
 # Explicit template_folder rather than Flask's automatic package-relative
 # resolution — that guessing works from a normal source checkout, but
@@ -42,15 +131,97 @@ app = Flask(__name__, template_folder=str(paths.bundled_resource("templates")))
 app.secret_key = "jobtracker-local"  # local-only tool; no real session security needed
 
 
-@app.route("/")
-def index():
-    entry_level = request.args.get("entry_level") == "1"
+@app.context_processor
+def inject_poll_status():
+    return {
+        "polling_in_progress": _poll_state["running"],
+        "poll_boards_done": _poll_state["boards_done"],
+        "poll_boards_total": _poll_state["boards_total"],
+        "resolving_companies": _resolve_state["running"],
+    }
+
+
+@app.route("/settings/companies", methods=["POST"])
+def add_companies():
+    names = [n.strip() for n in request.form.get("company_names", "").splitlines() if n.strip()]
+    if not names:
+        flash("Type at least one company name first.")
+    elif not _start_company_resolve(names):
+        flash("Already resolving companies — hang tight.")
+    else:
+        flash(f"Looking up {len(names)} compan{'y' if len(names) == 1 else 'ies'}… this can take a minute.")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/companies/remove", methods=["POST"])
+def remove_company():
+    ats = request.form.get("ats", "")
+    slug = request.form.get("slug", "")
+    if ats and slug:
+        remove_board(ats, slug)
+        flash(f"Removed {slug}.")
+    return redirect(url_for("settings"))
+
+
+@app.route("/poll", methods=["POST"])
+def poll():
+    if not _start_poll():
+        flash("Already polling — hang tight.")
+    else:
+        flash("Polling started in the background. This can take a minute or two for a lot of boards — new postings will show up here as it finishes.")
+    return redirect(request.referrer or url_for("index"))
+
+
+def _current_queue(entry_level: bool):
+    """Shared by the page route and the JSON endpoint — one query, two renderings."""
     with session() as conn:
         criteria = Criteria.load()
         scored = scored_jobs(conn, criteria, entry_level_only=entry_level)
         entries = apps.queue(conn, scored, limit=200)
         apps.save_snapshot(conn, entries)
-    return render_template("queue.html", entries=entries, entry_level=entry_level, active="queue")
+    has_boards = any(criteria.boards.values())
+    return entries, has_boards
+
+
+@app.route("/")
+def index():
+    entry_level = request.args.get("entry_level") == "1"
+    entries, has_boards = _current_queue(entry_level)
+    return render_template(
+        "queue.html", entries=entries, entry_level=entry_level, has_boards=has_boards, active="queue"
+    )
+
+
+@app.route("/api/queue")
+def queue_data():
+    """
+    JSON form of the queue, for the page's own incremental-refresh JS —
+    not a public API, just a way to fetch fresh entries without a full
+    page reload. Each entry carries pre-rendered card HTML from the
+    same _posting_card.html partial the page itself uses, so a newly
+    fetched card is pixel-identical to one rendered on load rather than
+    a second, JS-side copy of the markup that could drift out of sync.
+    """
+    entry_level = request.args.get("entry_level") == "1"
+    entries, _ = _current_queue(entry_level)
+    return {
+        "count": len(entries),
+        "entries": [
+            {"job_id": e.job_id, "html": render_template("_posting_card.html", e=e)}
+            for e in entries
+        ],
+    }
+
+
+@app.route("/api/poll-status")
+def poll_status():
+    """JSON status the base template's JS polls to update the banner and trigger a queue refresh."""
+    return {
+        "polling": _poll_state["running"],
+        "poll_done": _poll_state["boards_done"],
+        "poll_total": _poll_state["boards_total"],
+        "resolving": _resolve_state["running"],
+    }
 
 
 @app.route("/apply/<int:job_id>")
@@ -135,6 +306,7 @@ def settings():
             if cities.strip()
         ]
         tiers = presets.with_remote(city_tiers, remote_on=request.form.get("remote_ok") == "on")
+        tiers = presets.with_hybrid(tiers, hybrid_on=request.form.get("hybrid_ok") == "on")
 
         level = request.form.get("experience_level", "custom")
         if level == "custom":
@@ -159,6 +331,7 @@ def settings():
 
     current = load_editable()
     city_tiers, remote_on = presets.split_remote(current.tiers)
+    city_tiers, hybrid_on = presets.split_hybrid(city_tiers)
     return render_template(
         "settings.html",
         settings=current,
@@ -166,6 +339,7 @@ def settings():
             {"cities": t.cities, "priority": presets.closest_priority(t.score)} for t in city_tiers
         ],
         remote_on=remote_on,
+        hybrid_on=hybrid_on,
         priority_levels=presets.PRIORITY_LEVELS,
         experience_level=presets.guess_experience_level(
             current.seniority_preferred, current.seniority_penalized
@@ -174,6 +348,10 @@ def settings():
         strictness=presets.closest_strictness(current.min_score),
         strictness_labels=presets.STRICTNESS_LABELS,
         available_browsers=browser_launcher.available_browsers(),
+        us_cities=US_TECH_CITIES,
+        company_count=sum(len(s) for s in current.boards.values()),
+        resolve_found=_resolve_state["found"],
+        resolve_missing=_resolve_state["missing"],
         active="settings",
     )
 

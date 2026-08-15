@@ -25,6 +25,9 @@ from jobtracker.config_editor import Tier
 REMOTE_TOKENS = {"remote", "remote - us", "united states"}
 REMOTE_SCORE = 25
 
+HYBRID_TOKENS = {"hybrid"}
+HYBRID_SCORE = 20
+
 # (key, score, label) — ordered highest to lowest for display.
 PRIORITY_LEVELS = [
     ("top", 40, "Top priority"),
@@ -94,24 +97,29 @@ def guess_experience_level(preferred: list[str], penalized: list[str]) -> str:
     return "custom"
 
 
-def split_remote(tiers: list[Tier]) -> tuple[list[Tier], bool]:
+def _split_special_tier(tiers: list[Tier], tokens: set[str]) -> tuple[list[Tier], bool]:
     """
-    Separate the remote tier (if present) from city tiers.
+    Separate a "special" tier (remote or hybrid) from ordinary city tiers.
 
-    A tier counts as "the remote tier" if any of its comma-separated
-    entries is one of REMOTE_TOKENS — matches how it's actually written
-    in config.yaml today (`remote, remote - us, united states`) without
-    requiring an exact whole-tier match.
+    A tier counts as the special one if any of its comma-separated
+    entries is in `tokens` — matches how it's actually written in
+    config.yaml (`remote, remote - us, united states`) without
+    requiring an exact whole-tier text match.
     """
     cities: list[Tier] = []
-    remote_on = False
+    is_on = False
     for t in tiers:
         names = {c.strip().lower() for c in t.cities.split(",")}
-        if names & REMOTE_TOKENS:
-            remote_on = True
+        if names & tokens:
+            is_on = True
         else:
             cities.append(t)
-    return cities, remote_on
+    return cities, is_on
+
+
+def split_remote(tiers: list[Tier]) -> tuple[list[Tier], bool]:
+    """Separate the remote tier (if present) from city tiers."""
+    return _split_special_tier(tiers, REMOTE_TOKENS)
 
 
 def with_remote(city_tiers: list[Tier], remote_on: bool) -> list[Tier]:
@@ -119,3 +127,15 @@ def with_remote(city_tiers: list[Tier], remote_on: bool) -> list[Tier]:
     if not remote_on:
         return city_tiers
     return [*city_tiers, Tier(score=REMOTE_SCORE, cities="remote, remote - us, united states")]
+
+
+def split_hybrid(tiers: list[Tier]) -> tuple[list[Tier], bool]:
+    """Separate the hybrid tier (if present) from city tiers."""
+    return _split_special_tier(tiers, HYBRID_TOKENS)
+
+
+def with_hybrid(city_tiers: list[Tier], hybrid_on: bool) -> list[Tier]:
+    """Inverse of split_hybrid: reattach the hybrid tier if it's wanted."""
+    if not hybrid_on:
+        return city_tiers
+    return [*city_tiers, Tier(score=HYBRID_SCORE, cities="hybrid")]

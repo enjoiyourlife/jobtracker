@@ -9,56 +9,245 @@
 # anything left over lands in "unclassified" for weekly review.
 # ─────────────────────────────────────────────────────────────
 
-# Boards to poll, grouped by ATS. Empty by default — add companies
-# from Settings, or run `jobtracker resolver "Company Name"` to find
-# a board slug and add it here yourself.
+# Boards to poll, grouped by ATS. Ships pre-populated with a broad,
+# proven set of companies rather than empty, so a new install has
+# something to look at immediately instead of an empty queue and no
+# clear next step. Remove any of these from Settings ("Which companies
+# should be tracked?") if you don't want them, or add more the same way.
 boards:
-  greenhouse: []
-  lever: []
-  ashby: []
+  greenhouse:
+    - stripe
+    - figma
+    - databricks
+    - discord
+    - cloudflare
+    - reddit
+    - twilio
+    - coinbase
+    - asana
+    - robinhood
+    - instacart
+    - smartsheet
+    - chime
+    - airtable
+    - vacasa
+    - datadog
+    - mongodb
+    - okta
+    - zscaler
+    - brex
+    - toast
+    - samsara
+    - verkada
+    - elastic
+    - janestreet
+    - pinterest
+    - roblox
+    - scaleai
+    - block
+    - airbnb
+    - gitlab
+    - affirm
+    - via
+    - flexport
+    - klaviyo
+    - grafanalabs
+    - intercom
+    - postman
+    - nuro
+    - upstart
+    - vercel
+    - sigmacomputing
+    - cribl
+    - duolingo
+    - sofi
+    - carta
+    - mercury
+    - qualtrics
+    - fastly
+    - checkr
+    - gemini
+    - attentive
+    - amplitude
+    - algolia
+    - lucidsoftware
+    - tanium
+    - dropbox
+    - pendo
+    - launchdarkly
+    - bird
+    - webflow
+    - cockroachlabs
+    - seatgeek
+    - applovin
+    - sumologic
+    - hover
+    - pagerduty
+    - honeycomb
+    - squarespace
+    - calendly
+    - lattice
+    - netlify
+    - andurilindustries
+    - boxinc
+    - tubitv
+    - life360
+    - wizinc
+    - digitalocean98
+  lever:
+    - matchgroup
+    - includedhealth
+    - coupa
+    - wealthfront
+  ashby:
+    - ramp
+    - crusoe
+    - applied
+    - sondermind
+    - vanta
+    - hinge-health
+    - spoton
+    - benchling
+    - thumbtack
+    - sentry
+    - miro
+    - betterup
+    - strava
+    - zapier
+    - nylas
+    - moderntreasury
+    - quora
+    - cedar
+    - sprig
+    - opensea
 
 role:
   include:
     - software engineer
     - software developer
+    - software dev
     - swe
     - backend engineer
+    - back end engineer
+    - backend developer
     - frontend engineer
+    - front end engineer
+    - frontend developer
     - full stack
+    - fullstack
+    - application developer
+    - applications engineer
+    - platform engineer
+    - systems engineer
     - sdet
+    - test engineer
+    - automation engineer
     - qa engineer
+    - quality engineer
+    - member of technical staff
 
   exclude:
     - sales engineer
     - solutions engineer
+    - solution engineer
+    - customer engineer
+    - support engineer
+    - field engineer
     - engineering manager
-    - product manager
+    - manager, engineering
+    - manager, software
+    - head of
+    - vp
+    - director
     - recruiter
+    - technical recruiter
+    - program manager
+    - product manager
+    - technical program manager
+    - engineering intern
+    - internship
     - principal
     - staff engineer
+    - staff software
     - distinguished
+    - phd
+    - founding
 
 seniority:
   preferred:
     - junior
     - associate
     - new grad
+    - new graduate
+    - new college grad
+    - recent grad
+    - recent graduate
+    - university grad
     - entry level
     - early career
+    - early in career
+    - class of 20
     - "i"
+    - "1"
   neutral: 0
   penalized:
     - senior
     - sr.
     - lead
     - staff
+    - "iii"
+    - "iv"
+
+# Countries other than the US a posting's location might name. Shared
+# by two rules below via the YAML anchor.
+_non_us_countries: &non_us_countries
+  - argentina
+  - brazil
+  - canada
+  - mexico
+  - colombia
+  - chile
+  - peru
+  - uk
+  - united kingdom
+  - ireland
+  - portugal
+  - spain
+  - france
+  - germany
+  - netherlands
+  - poland
+  - romania
+  - bulgaria
+  - ukraine
+  - india
+  - pakistan
+  - philippines
+  - singapore
+  - australia
+  - new zealand
+  - japan
+  - china
+  - south korea
+  - sweden
+  - vietnam
+  - indonesia
+  - nigeria
+  - kenya
+  - south africa
+  - egypt
+  - uae
+  - israel
+  - turkey
 
 # No cities configured yet — add them from Settings ("Where do you
-# want to work?"). A posting in an unlisted city still shows up,
-# just without a location bonus.
+# want to work?"). A posting in an unlisted city still shows up, just
+# without a location bonus. That principle stops at work authorization,
+# though: a posting naming a non-US country isn't "lower priority,"
+# it's not actually available, so disallow vetoes it outright.
 location:
   tiers: []
-  disallow: []
+  disallow: *non_us_countries
 
 experience:
   max_years: 2

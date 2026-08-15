@@ -13,7 +13,14 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from jobtracker.config_editor import EditableSettings, Tier, load_editable, apply_editable
+from jobtracker.config_editor import (
+    EditableSettings,
+    Tier,
+    add_boards,
+    apply_editable,
+    load_editable,
+    remove_board,
+)
 
 MINIMAL_CONFIG = """\
 boards:
@@ -161,3 +168,75 @@ class TestApplyEditable:
         criteria = Criteria.load(path)
         assert criteria.min_score == 33
         assert criteria.location_disallow  # anchor still resolves to real data
+
+
+class TestAddBoards:
+    def test_appends_to_existing_ats_list(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        add_boards([("greenhouse", "figma")], path)
+
+        assert load_editable(path).boards["greenhouse"] == ["acme", "figma"]
+
+    def test_creates_a_new_ats_key_if_absent(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        add_boards([("lever", "notion")], path)
+
+        assert load_editable(path).boards["lever"] == ["notion"]
+        assert load_editable(path).boards["greenhouse"] == ["acme"]  # untouched
+
+    def test_duplicate_slug_is_not_added_twice(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        add_boards([("greenhouse", "acme")], path)
+
+        assert load_editable(path).boards["greenhouse"] == ["acme"]
+
+    def test_works_on_a_fresh_empty_boards_section(self, tmp_path):
+        """The starter config.default.yaml ships with boards: {greenhouse:
+        [], lever: [], ashby: []} — adding to an empty list must work."""
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG.replace("boards:\n  greenhouse: [acme]", "boards:\n  greenhouse: []"))
+
+        add_boards([("greenhouse", "stripe")], path)
+
+        assert load_editable(path).boards["greenhouse"] == ["stripe"]
+
+
+class TestRemoveBoard:
+    def test_removes_an_existing_slug(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        remove_board("greenhouse", "acme", path)
+
+        assert load_editable(path).boards["greenhouse"] == []
+
+    def test_missing_slug_is_a_no_op_not_an_error(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        remove_board("greenhouse", "not-there", path)  # must not raise
+
+        assert load_editable(path).boards["greenhouse"] == ["acme"]
+
+    def test_unknown_ats_is_a_no_op_not_an_error(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        remove_board("lever", "acme", path)  # lever key doesn't exist at all
+
+        assert load_editable(path).boards["greenhouse"] == ["acme"]
+
+    def test_add_then_remove_round_trips_to_original(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        add_boards([("greenhouse", "figma")], path)
+        remove_board("greenhouse", "figma", path)
+
+        assert load_editable(path).boards["greenhouse"] == ["acme"]
