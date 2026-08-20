@@ -19,39 +19,33 @@ class TestWritableDir:
         monkeypatch.setattr(paths, "FROZEN", False)
         assert paths.writable_dir() == paths._SOURCE_ROOT
 
-    def test_frozen_mode_uses_user_data_dir(self, monkeypatch, tmp_path):
+    def test_frozen_mode_uses_bundle_data_dir(self, monkeypatch, tmp_path):
         monkeypatch.setattr(paths, "FROZEN", True)
-        monkeypatch.setattr(paths, "_user_data_dir", lambda: tmp_path / "jobtracker")
+        monkeypatch.setattr(paths, "_bundle_data_dir", lambda: tmp_path / "appdata")
 
         result = paths.writable_dir()
 
-        assert result == tmp_path / "jobtracker"
+        assert result == tmp_path / "appdata"
         assert result.exists()  # created, not just returned
 
 
-class TestUserDataDir:
-    def test_macos_uses_application_support(self, monkeypatch):
-        monkeypatch.setattr(sys, "platform", "darwin")
-        result = paths._user_data_dir()
-        assert "Library/Application Support/jobtracker" in str(result)
+class TestBundleDataDir:
+    """
+    Regression coverage for a deliberate design choice, not the OS
+    default: packaged-app data lives inside the .app bundle itself
+    (Contents/Resources/appdata) so deleting the app removes every
+    trace in one action, rather than in ~/Library/Application Support
+    where it would silently survive an uninstall.
+    """
 
-    def test_windows_uses_appdata(self, monkeypatch):
-        """
-        Asserts on path *parts*, not the joined string — pathlib picks
-        Posix or Windows separator semantics from the OS actually
-        running the test, not from sys.platform, so a literal
-        backslash-joined string can't be asserted on a Mac test runner.
-        """
-        monkeypatch.setattr(sys, "platform", "win32")
-        monkeypatch.setenv("APPDATA", r"C:\Users\test\AppData\Roaming")
-        result = paths._user_data_dir()
-        assert result.name == "jobtracker"
-        assert "AppData" in str(result.parent) or "Roaming" in str(result.parent)
+    def test_resolves_relative_to_the_running_executable(self, monkeypatch, tmp_path):
+        bundle = tmp_path / "jobtracker.app" / "Contents"
+        executable = bundle / "MacOS" / "jobtracker"
+        executable.parent.mkdir(parents=True)
+        executable.touch()
+        monkeypatch.setattr(sys, "executable", str(executable))
 
-    def test_linux_uses_xdg_data_home(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(sys, "platform", "linux")
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert paths._user_data_dir() == tmp_path / "jobtracker"
+        assert paths._bundle_data_dir() == bundle / "Resources" / "appdata"
 
 
 class TestBundledResource:

@@ -7,11 +7,23 @@ exactly where it always has — dev mode changes nothing about the
 existing setup, on purpose, so this refactor can't silently orphan
 anyone's already-running config or database.
 
-Running as a packaged app (PyInstaller sets sys.frozen), the same
-files live in the OS's actual per-user data directory instead. A
-double-clicked .app can't write into its own bundle — and shouldn't
-try to; /Applications is meant to be read-only — and there's no
-"project root" once the source tree isn't there at all.
+Running as a packaged app (PyInstaller sets sys.frozen), writable
+state lives inside the .app bundle itself — Contents/Resources/appdata
+— rather than the OS's usual per-user data directory. That's a
+deliberate departure from the normal convention (and from what this
+module did before): a location outside the bundle survives the app
+being deleted, which is exactly backwards for a single-user local tool
+someone might want to cleanly remove — drag jobtracker.app to the
+Trash and every trace, config included, goes with it in that one
+action. No separate "uninstall" step, no orphaned folder in ~/Library
+nobody remembers to clean up. Writing into a signed bundle is
+against Apple's general guidance and would be a real problem for an
+App Store or notarized-for-wide-distribution build, but this one is
+personal, unsigned/ad-hoc-signed, and only ever runs on the machine
+that built it, so that tradeoff doesn't apply here. New files land in
+their own fresh, never-signed subdirectory rather than overwriting
+anything PyInstaller placed, which keeps this from touching whatever
+the bundle's own signature actually covers.
 
 Bundled read-only resources (templates/, the starter config template)
 are located differently again when frozen: PyInstaller extracts them
@@ -20,7 +32,6 @@ under sys._MEIPASS, not next to this file.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -34,22 +45,25 @@ _SOURCE_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGE_DIR = Path(__file__).resolve().parent
 
 
-def _user_data_dir() -> Path:
-    """OS-appropriate per-user data directory. Packaged-app mode only."""
-    if sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-    elif sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    return base / "jobtracker"
+def _bundle_data_dir() -> Path:
+    """
+    Contents/Resources/appdata inside the running .app. Packaged-app
+    mode only.
+
+    Derived from sys.executable (PyInstaller sets it to the real
+    bootloader binary at Contents/MacOS/jobtracker), not sys._MEIPASS
+    — _MEIPASS's exact location relative to the bundle isn't part of
+    PyInstaller's stable contract the way the executable's own path is.
+    """
+    bundle_contents = Path(sys.executable).resolve().parent.parent
+    return bundle_contents / "Resources" / "appdata"
 
 
 def writable_dir() -> Path:
     """Directory for anything jobtracker needs to read AND write."""
     if not FROZEN:
         return _SOURCE_ROOT
-    d = _user_data_dir()
+    d = _bundle_data_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
 
