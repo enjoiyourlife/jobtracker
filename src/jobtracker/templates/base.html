@@ -130,6 +130,7 @@
   /* ---- Content ---- */
   .content { flex: 1; height: 100vh; overflow-y: auto; }
   main { max-width: 700px; margin: 0 auto; padding: 40px var(--sp-6) var(--sp-7); }
+  main.main-wide { max-width: 1000px; }
 
   h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 var(--sp-5); }
   h2 {
@@ -165,6 +166,30 @@
   .score-high { background: var(--score-high-bg); color: var(--score-high-fg); }
   .score-mid  { background: var(--score-mid-bg);  color: var(--score-mid-fg); }
   .score-low  { background: var(--score-low-bg);  color: var(--score-low-fg); }
+
+  /* ---- Applications table ---- */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+  table.apps { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+  table.apps th {
+    text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-3); padding: 10px var(--sp-3); border-bottom: 1px solid var(--border); background: var(--surface-2);
+    position: sticky; top: 0;
+  }
+  table.apps td { padding: 10px var(--sp-3); border-bottom: 1px solid var(--border); background: var(--surface); vertical-align: middle; }
+  table.apps tr:last-child td { border-bottom: none; }
+  table.apps tr:hover td { background: var(--row-hover); }
+  table.apps td.title-cell { white-space: normal; min-width: 220px; font-weight: 560; }
+  table.apps td.link-cell a { color: var(--accent); text-decoration: none; }
+  table.apps td.link-cell a:hover { text-decoration: underline; }
+
+  .status-pill {
+    display: inline-block; font-weight: 700; font-size: 11px; letter-spacing: .01em; text-transform: capitalize;
+    padding: 3px 9px; border-radius: 999px; line-height: 1.5;
+  }
+  .status-queued, .status-skipped { background: var(--score-low-bg); color: var(--score-low-fg); }
+  .status-submitted, .status-acknowledged, .status-screening, .status-interview { background: var(--score-mid-bg); color: var(--score-mid-fg); }
+  .status-offer { background: var(--score-high-bg); color: var(--score-high-fg); }
+  .status-rejected { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
 
   .actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
   .btn {
@@ -283,6 +308,10 @@
     <svg viewBox="0 0 20 20" fill="none"><path d="M3 15V9M9 15V4M15 15v-6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Status
   </a>
+  <a href="/applications" class="nav-item {{ 'active' if active == 'applications' else '' }}">
+    <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="3.5" width="14" height="13" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M3 8h14M8 8v8.5" stroke="currentColor" stroke-width="1.6"/></svg>
+    Applications
+  </a>
   <a href="/settings" class="nav-item {{ 'active' if active == 'settings' else '' }}">
     <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.7"/><path d="M10 2.6v2M10 15.4v2M17.4 10h-2M4.6 10h-2M15.1 4.9l-1.4 1.4M6.3 13.7l-1.4 1.4M15.1 15.1l-1.4-1.4M6.3 6.3L4.9 4.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
     Settings
@@ -301,7 +330,7 @@
   </form>
 </aside>
 <div class="content">
-<main>
+<main class="{% block main_class %}{% endblock %}">
 <div class="flash flash-info" id="status-banner" style="{{ '' if (polling_in_progress or resolving_companies) else 'display:none;' }}">
   <svg class="spin" width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
   <span class="status-text">

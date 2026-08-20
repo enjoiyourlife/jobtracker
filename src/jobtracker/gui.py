@@ -14,11 +14,14 @@ across requests, no extra state to reason about.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 import webbrowser
+from datetime import datetime, timezone
 from threading import Lock, Thread, Timer
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, Response, flash, redirect, render_template, request, url_for
 
 from jobtracker import browser_launcher, paths
 from jobtracker import settings_presets as presets
@@ -172,6 +175,17 @@ def _company_name(name: str) -> str:
     if not name:
         return name
     return re.sub(r"[-_]+", " ", name).title()
+
+
+@app.template_filter("short_date")
+def _short_date(value: str | None) -> str:
+    """ISO timestamp -> 'Aug 20, 2026' for table display; blank if unset."""
+    if not value:
+        return ""
+    try:
+        return datetime.fromisoformat(value).strftime("%b %-d, %Y")
+    except ValueError:
+        return value
 
 
 @app.context_processor
@@ -336,6 +350,47 @@ def mark_submitted(job_id: int):
         except apps.TransitionError:
             pass  # already moved on; the status page will just reflect current state
     return redirect(url_for("status"))
+
+
+@app.route("/applications")
+def applications():
+    with session() as conn:
+        rows = apps.all_applications(conn)
+    return render_template("applications.html", applications=rows, active="applications")
+
+
+@app.route("/applications.csv")
+def applications_csv():
+    """
+    Same rows the Applications tab shows, as a download.
+
+    Built from all_applications() rather than re-querying — the page
+    and the export can't drift apart if there's only one query. A
+    StringIO buffer (not a generator streamed straight to the client)
+    is fine here: even years of applications is a few thousand rows,
+    nowhere near where buffering the whole thing in memory matters.
+    """
+    with session() as conn:
+        rows = apps.all_applications(conn)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "Company", "Title", "Status", "Location",
+        "Queued", "Submitted", "Last Update", "URL",
+    ])
+    for r in rows:
+        writer.writerow([
+            _company_name(r["company"]), r["title"], r["status"], r["location"] or "",
+            r["queued_at"], r["submitted_at"] or "", r["last_status_at"], r["absolute_url"],
+        ])
+
+    filename = f"jobtracker_applications_{datetime.now(timezone.utc):%Y-%m-%d}.csv"
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.route("/settings", methods=["GET", "POST"])

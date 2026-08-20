@@ -230,6 +230,30 @@ def pipeline(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+def all_applications(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Every application, any status, most recently active first.
+
+    The GUI's Applications tab and CSV export both read from here —
+    one query backing both, so "what the page shows" and "what you
+    exported" can never quietly drift apart. Ordered by last_status_at
+    rather than queued_at: a rejection from six months ago is less
+    relevant right now than an offer that came in an hour ago, even if
+    the offer was queued more recently.
+    """
+    rows = conn.execute(
+        """
+        SELECT a.job_id, j.title, c.name AS company, j.location, j.absolute_url,
+               a.status, a.queued_at, a.submitted_at, a.last_status_at
+          FROM applications a
+          JOIN jobs j ON j.id = a.job_id
+          JOIN companies c ON c.id = j.company_id
+         ORDER BY a.last_status_at DESC
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def ghosted(conn: sqlite3.Connection, days: int = GHOST_THRESHOLD_DAYS) -> list[dict]:
     """
     Submissions with no movement past the threshold.

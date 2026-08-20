@@ -209,6 +209,55 @@ class TestQueueSnapshot:
         assert apps.resolve_position(db, 2) is None
 
 
+class TestAllApplications:
+    def test_returns_every_status_not_just_one(self, db):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1"), make_job("2")])
+        j1, j2 = [r["id"] for r in db.execute("SELECT id FROM jobs ORDER BY id")]
+
+        apps.add(db, j1, status="queued")
+        apps.add(db, j2, status="skipped")
+
+        result = apps.all_applications(db)
+        assert {r["job_id"] for r in result} == {j1, j2}
+
+    def test_most_recently_active_first(self, db):
+        """A rejection updated long ago outranks nothing — a fresher
+        last_status_at sorts first regardless of queue order. Backdates
+        j1's timestamp directly rather than relying on a real-time gap
+        between two calls a second apart, since queued_at/last_status_at
+        only carry second precision and two calls in the same test can
+        land in the same second."""
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1"), make_job("2")])
+        j1, j2 = [r["id"] for r in db.execute("SELECT id FROM jobs ORDER BY id")]
+
+        apps.add(db, j1, status="queued")
+        apps.add(db, j2, status="queued")
+        db.execute(
+            "UPDATE applications SET last_status_at = '2020-01-01T00:00:00+00:00' WHERE job_id = ?",
+            (j1,),
+        )
+
+        result = apps.all_applications(db)
+        assert result[0]["job_id"] == j2
+
+    def test_includes_company_title_and_dates_for_display(self, db):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1", title="Backend Engineer")])
+        job_id = db.execute("SELECT id FROM jobs").fetchone()["id"]
+        apps.add(db, job_id, status="queued")
+
+        result = apps.all_applications(db)
+        assert result[0]["title"] == "Backend Engineer"
+        assert result[0]["company"] == "Acme"
+        assert result[0]["queued_at"] is not None
+        assert result[0]["submitted_at"] is None  # never submitted
+
+    def test_empty_when_nothing_tracked(self, db):
+        assert apps.all_applications(db) == []
+
+
 class TestListByStatus:
     def test_returns_only_matching_status(self, db):
         cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")

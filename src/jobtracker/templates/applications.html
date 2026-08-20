@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Applications — jobtracker{% endblock %}
+{% block main_class %}main-wide{% endblock %}
+{% block content %}
+<div class="posting-top" style="margin-bottom: var(--sp-4); align-items: center;">
+  <h1 style="margin:0; flex:1;">Applications</h1>
+  {% if applications %}
+  <a class="btn btn-primary" href="{{ url_for('applications_csv') }}">
+    <svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M6 9.5l4 4 4-4M4 16.5h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Export CSV
+  </a>
+  {% endif %}
+</div>
+
+{% if not applications %}
+  <div class="empty">Nothing applied to yet — decisions made from the Queue show up here.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="apps">
+    <thead>
+      <tr>
+        <th>Company</th>
+        <th>Title</th>
+        <th>Status</th>
+        <th>Location</th>
+        <th>Queued</th>
+        <th>Submitted</th>
+        <th>Last Update</th>
+        <th>Link</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in applications %}
+      <tr>
+        <td>{{ a.company | company_name }}</td>
+        <td class="title-cell">{{ a.title }}</td>
+        <td><span class="status-pill status-{{ a.status }}">{{ a.status }}</span></td>
+        <td>{{ a.location or "—" }}</td>
+        <td>{{ a.queued_at | short_date }}</td>
+        <td>{{ a.submitted_at | short_date if a.submitted_at else "—" }}</td>
+        <td>{{ a.last_status_at | short_date }}</td>
+        <td class="link-cell"><a href="{{ a.absolute_url }}" target="_blank" rel="noopener">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

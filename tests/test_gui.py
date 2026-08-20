@@ -107,6 +107,14 @@ class TestRoutesDontCrash:
     def test_status_page(self, client):
         assert client.get("/status").status_code == 200
 
+    def test_applications_page(self, client):
+        assert client.get("/applications").status_code == 200
+
+    def test_applications_csv(self, client):
+        resp = client.get("/applications.csv")
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/csv"
+
     def test_settings_page(self, client):
         assert client.get("/settings").status_code == 200
 
@@ -175,6 +183,52 @@ class TestSettingsFormSubmission:
         saved = load_editable()
         assert saved.max_years == 2
         assert saved.penalty_per_year == 15
+
+
+class TestApplicationsExport:
+    """CSV export must reflect real seeded data, not just return 200
+    on an empty database — content-shape coverage the smoke test above
+    doesn't give."""
+
+    def _seed_one_application(self, client) -> None:
+        import jobtracker.db.connection as connection
+        from jobtracker.ats.base import RawJob
+        from jobtracker.db import applications as apps
+        from jobtracker.db import jobs as repo
+
+        with connection.session() as conn:
+            cid = repo.get_or_create_company(conn, "Acme", "greenhouse", "acme")
+            repo.upsert_jobs(conn, cid, [RawJob(
+                global_id="greenhouse:acme:1", ats_job_id="1",
+                title="Backend Engineer", location="Seattle, WA",
+                absolute_url="https://example.com/1", description="",
+                updated_at="2026-08-01T00:00:00Z", raw_payload="{}",
+            )])
+            job_id = conn.execute("SELECT id FROM jobs").fetchone()["id"]
+            apps.add(conn, job_id, status="queued")
+
+    def test_csv_contains_the_seeded_row(self, client):
+        self._seed_one_application(client)
+
+        resp = client.get("/applications.csv")
+
+        body = resp.get_data(as_text=True)
+        assert "Acme" in body
+        assert "Backend Engineer" in body
+        assert "queued" in body
+        assert "https://example.com/1" in body
+
+    def test_csv_download_has_a_filename(self, client):
+        resp = client.get("/applications.csv")
+        assert "attachment; filename=" in resp.headers["Content-Disposition"]
+
+    def test_applications_page_shows_the_seeded_row(self, client):
+        self._seed_one_application(client)
+
+        resp = client.get("/applications")
+
+        assert b"Acme" in resp.data
+        assert b"Backend Engineer" in resp.data
 
 
 class _ImmediateThread:
