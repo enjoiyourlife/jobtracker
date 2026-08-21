@@ -258,6 +258,40 @@ class TestAllApplications:
         assert apps.all_applications(db) == []
 
 
+class TestRemove:
+    def test_deletes_the_application_row(self, db):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1")])
+        job_id = db.execute("SELECT id FROM jobs").fetchone()["id"]
+        apps.add(db, job_id, status="queued")
+
+        assert apps.remove(db, job_id) is True
+        assert apps.all_applications(db) == []
+
+    def test_job_row_itself_is_untouched(self, db):
+        """Removing tracking history isn't the same as the posting
+        never having existed — it should become eligible for the queue
+        again, not vanish from the jobs table."""
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1")])
+        job_id = db.execute("SELECT id FROM jobs").fetchone()["id"]
+        apps.add(db, job_id, status="queued")
+
+        apps.remove(db, job_id)
+
+        assert db.execute("SELECT id FROM jobs WHERE id = ?", (job_id,)).fetchone() is not None
+
+    def test_removing_a_job_with_no_application_is_a_no_op_not_an_error(self, db):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1")])
+        job_id = db.execute("SELECT id FROM jobs").fetchone()["id"]
+
+        assert apps.remove(db, job_id) is False
+
+    def test_removing_a_nonexistent_job_id_is_a_no_op_not_an_error(self, db):
+        assert apps.remove(db, 999999) is False
+
+
 class TestListByStatus:
     def test_returns_only_matching_status(self, db):
         cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")

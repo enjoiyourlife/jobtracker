@@ -27,6 +27,7 @@
         <th>Submitted</th>
         <th>Last Update</th>
         <th>Link</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -40,6 +41,14 @@
         <td>{{ a.submitted_at | short_date if a.submitted_at else "—" }}</td>
         <td>{{ a.last_status_at | short_date }}</td>
         <td class="link-cell"><a href="{{ a.absolute_url }}" target="_blank" rel="noopener">View</a></td>
+        <td>
+          <form method="post" action="{{ url_for('remove_application', job_id=a.job_id) }}"
+                onsubmit="return confirm('Remove this application? This can\'t be undone.');">
+            <button type="submit" class="icon-btn" title="Remove">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M5 6h10M8 6V4.5a1 1 0 011-1h2a1 1 0 011 1V6m-7 0l.6 9a1 1 0 001 .9h4.8a1 1 0 001-.9l.6-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

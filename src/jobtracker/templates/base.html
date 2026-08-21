@@ -210,6 +210,15 @@
   .btn-primary:active { background: var(--accent-active); }
   .btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
   .btn-ghost:hover { background: var(--row-hover); color: var(--text); }
+  .btn-ghost-danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: var(--radius-sm); border: 1px solid transparent;
+    background: transparent; color: var(--text-3); cursor: pointer; padding: 0;
+    transition: background .15s ease, color .15s ease;
+  }
+  .icon-btn svg { width: 14px; height: 14px; }
+  .icon-btn:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 
   .empty {
     text-align: center; padding: var(--sp-7) var(--sp-4); color: var(--text-3);

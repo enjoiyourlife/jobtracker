@@ -159,6 +159,26 @@ def add(
     return cursor.lastrowid
 
 
+def remove(conn: sqlite3.Connection, job_id: int) -> bool:
+    """
+    Delete an application record entirely, not just change its status.
+
+    Distinct from 'skipped': skipping is a decision worth keeping in
+    the history (it's why a posting stopped resurfacing in the queue),
+    but this is for the record never having belonged there in the first
+    place — added by mistake, a misresolved company, that kind of thing.
+    The underlying job row is untouched, so a removed posting becomes
+    eligible for the queue again if it still classifies and isn't closed
+    — same as any other posting with no application row.
+
+    Returns whether a row was actually deleted, so callers (a GUI route
+    flashing a message) can tell a real removal from a no-op on an
+    already-gone job_id without a separate existence check first.
+    """
+    cursor = conn.execute("DELETE FROM applications WHERE job_id = ?", (job_id,))
+    return cursor.rowcount > 0
+
+
 def set_status(conn: sqlite3.Connection, job_id: int, new_status: str) -> None:
     """
     Advance an application's status.
@@ -264,7 +284,7 @@ def ghosted(conn: sqlite3.Connection, days: int = GHOST_THRESHOLD_DAYS) -> list[
     """
     rows = conn.execute(
         """
-        SELECT j.title, c.name AS company, a.submitted_at, j.absolute_url,
+        SELECT a.job_id, j.title, c.name AS company, a.submitted_at, j.absolute_url,
                CAST(julianday('now') - julianday(a.submitted_at) AS INTEGER) AS days_out
           FROM applications a
           JOIN jobs j ON j.id = a.job_id

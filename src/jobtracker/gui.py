@@ -359,6 +359,21 @@ def mark_submitted(job_id: int):
     return redirect(url_for("status"))
 
 
+@app.route("/applications/<int:job_id>/remove", methods=["POST"])
+def remove_application(job_id: int):
+    """
+    Delete an application record — from the Applications table or
+    Status's queued/ghosted lists, wherever the request came from.
+    request.referrer rather than a fixed redirect target so this one
+    route serves all three without needing to know which page called
+    it, same pattern /poll already uses.
+    """
+    with session() as conn:
+        removed = apps.remove(conn, job_id)
+    flash("Removed." if removed else "Already gone.")
+    return redirect(request.referrer or url_for("applications"))
+
+
 @app.route("/applications")
 def applications():
     with session() as conn:

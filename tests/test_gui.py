@@ -190,7 +190,7 @@ class TestApplicationsExport:
     on an empty database — content-shape coverage the smoke test above
     doesn't give."""
 
-    def _seed_one_application(self, client) -> None:
+    def _seed_one_application(self, client) -> int:
         import jobtracker.db.connection as connection
         from jobtracker.ats.base import RawJob
         from jobtracker.db import applications as apps
@@ -206,6 +206,7 @@ class TestApplicationsExport:
             )])
             job_id = conn.execute("SELECT id FROM jobs").fetchone()["id"]
             apps.add(conn, job_id, status="queued")
+            return job_id
 
     def test_csv_contains_the_seeded_row(self, client):
         self._seed_one_application(client)
@@ -229,6 +230,20 @@ class TestApplicationsExport:
 
         assert b"Acme" in resp.data
         assert b"Backend Engineer" in resp.data
+
+
+class TestRemoveApplication:
+    def test_removes_and_redirects(self, client):
+        job_id = TestApplicationsExport()._seed_one_application(client)
+
+        resp = client.post(f"/applications/{job_id}/remove")
+
+        assert resp.status_code == 302
+        assert b"Acme" not in client.get("/applications").data
+
+    def test_removing_an_already_gone_job_id_does_not_500(self, client):
+        resp = client.post("/applications/999999/remove")
+        assert resp.status_code == 302
 
 
 class _ImmediateThread:

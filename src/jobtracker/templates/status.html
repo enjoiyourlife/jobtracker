@@ -41,6 +41,13 @@
       <svg viewBox="0 0 20 20" fill="none"><path d="M8 5H5a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M12 4h4v4M15.5 4.5L9 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       View posting
     </a>
+    <form method="post" action="{{ url_for('remove_application', job_id=a.job_id) }}"
+          onsubmit="return confirm('Remove this application? This can\'t be undone.');" style="display:contents;">
+      <button type="submit" class="btn btn-ghost btn-ghost-danger" title="Remove">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M5 6h10M8 6V4.5a1 1 0 011-1h2a1 1 0 011 1V6m-7 0l.6 9a1 1 0 001 .9h4.8a1 1 0 001-.9l.6-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Remove
+      </button>
+    </form>
   </div>
 </div>
 {% endfor %}
@@ -56,6 +63,19 @@
     <span class="score-badge score-low">{{ g.days_out }}d</span>
   </div>
   <div class="meta">{{ g.company | company_name }}</div>
+  <div class="actions">
+    <a class="btn btn-ghost" href="{{ g.absolute_url }}" target="_blank" rel="noopener">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M8 5H5a1 1 0 00-1 1v9a1 1 0 001 1h9a1 1 0 001-1v-3M12 4h4v4M15.5 4.5L9 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      View posting
+    </a>
+    <form method="post" action="{{ url_for('remove_application', job_id=g.job_id) }}"
+          onsubmit="return confirm('Remove this application? This can\'t be undone.');" style="display:contents;">
+      <button type="submit" class="btn btn-ghost btn-ghost-danger" title="Remove">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M5 6h10M8 6V4.5a1 1 0 011-1h2a1 1 0 011 1V6m-7 0l.6 9a1 1 0 001 .9h4.8a1 1 0 001-.9l.6-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Remove
+      </button>
+    </form>
+  </div>
 </div>
 {% endfor %}
 {% endblock %}
