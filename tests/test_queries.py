@@ -12,7 +12,7 @@ import dataclasses
 from jobtracker.ats.base import RawJob
 from jobtracker.db import jobs as repo
 from jobtracker.filters import Criteria
-from jobtracker.queries import scored_jobs
+from jobtracker.queries import invalidate_cache, scored_jobs
 
 CONFIG = """
 role:
@@ -100,3 +100,56 @@ class TestScoredJobsEntryLevel:
 
         strict = dataclasses.replace(_criteria(tmp_path), min_score=1000)
         assert scored_jobs(db, strict, entry_level_only=True) == {}
+
+
+class TestScoredJobsCache:
+    """
+    Regression coverage for the cache added to fix a queue page that
+    took ~380ms to render on every single view: scored_jobs() is
+    expensive (extract_years() regex-scanning every surviving posting's
+    description) but only actually needs recomputing when open postings
+    or criteria change, not on every page load. The risk with any cache
+    is serving stale data after a real change — these test that the
+    cache actually updates, not just that it returns *something*.
+    """
+
+    def test_second_call_returns_cached_result_without_recomputing(self, db, tmp_path):
+        """Proof the cache is actually being hit: a job added after the
+        first call is invisible to the second, uncached call would see it."""
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1", "Software Engineer")])
+        criteria = _criteria(tmp_path)
+
+        first = scored_jobs(db, criteria)
+        repo.upsert_jobs(db, cid, [make_job("2", "Software Engineer")])
+        second = scored_jobs(db, criteria)
+
+        assert first == second  # the second job isn't reflected — served from cache
+
+    def test_invalidate_cache_forces_a_fresh_computation(self, db, tmp_path):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1", "Software Engineer")])
+        criteria = _criteria(tmp_path)
+
+        first = scored_jobs(db, criteria)
+        repo.upsert_jobs(db, cid, [make_job("2", "Software Engineer")])
+        invalidate_cache()
+        second = scored_jobs(db, criteria)
+
+        assert len(second) == len(first) + 1
+
+    def test_entry_level_only_and_default_are_cached_independently(self, db, tmp_path):
+        """A cache keyed on nothing but entry_level_only must not let a
+        True-keyed call satisfy a False-keyed one or vice versa."""
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [
+            make_job("1", "Software Engineer, New Grad"),
+            make_job("2", "Software Engineer"),
+        ])
+        criteria = _criteria(tmp_path)
+
+        broad = scored_jobs(db, criteria, entry_level_only=False)
+        narrow = scored_jobs(db, criteria, entry_level_only=True)
+
+        assert len(broad) == 2
+        assert len(narrow) == 1

@@ -18,8 +18,25 @@ from typing import Any
 import pytest
 
 from jobtracker.db.connection import connect
+from jobtracker.queries import invalidate_cache
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(autouse=True)
+def _reset_scored_jobs_cache():
+    """
+    queries.scored_jobs() caches its result in a module-level dict keyed
+    only on entry_level_only, not on which database produced it — correct
+    for the real app (one process, one db), but every test gets its own
+    tmp_path db, so without clearing this between tests, one test's
+    cached result would leak into the next test that happens to call
+    scored_jobs() with the same entry_level_only value against a
+    different db entirely.
+    """
+    invalidate_cache()
+    yield
+    invalidate_cache()
 
 
 def _load(name: str) -> Any:

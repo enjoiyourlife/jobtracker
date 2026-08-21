@@ -38,6 +38,7 @@ from jobtracker.db.applications import GHOST_THRESHOLD_DAYS
 from jobtracker.db.connection import session
 from jobtracker.filters import Criteria
 from jobtracker.poller import poll_all
+from jobtracker.queries import invalidate_cache as invalidate_scored_cache
 from jobtracker.queries import scored_jobs
 from jobtracker.resolver import resolve_all
 from jobtracker.us_cities import US_TECH_CITIES
@@ -87,6 +88,11 @@ def _start_poll() -> bool:
             pass
         finally:
             _poll_state["running"] = False
+            # Unconditional, even after a partial/failed poll: whatever
+            # jobs did land before the failure make the cached scores
+            # stale either way, and recomputing once is cheap next to
+            # silently showing wrong results.
+            invalidate_scored_cache()
 
     Thread(target=worker, daemon=True).start()
     return True
@@ -121,6 +127,7 @@ def _start_company_resolve(names: list[str]) -> bool:
             results = resolve_all(names)
             found = [r for r in results if r.resolved]
             add_boards([(r.ats, r.slug) for r in found])
+            invalidate_scored_cache()
             _resolve_state["found"] = [r.name for r in found]
             _resolve_state["missing"] = [r.name for r in results if not r.resolved]
         except Exception:
@@ -425,6 +432,7 @@ def settings():
             browser=request.form.get("browser", browser_launcher.SYSTEM_DEFAULT),
         )
         apply_editable(updated)
+        invalidate_scored_cache()
         return redirect(url_for("settings"))
 
     current = load_editable()
@@ -473,6 +481,29 @@ def _safe_int(value: str | None, *, default: int) -> int:
         return default
 
 
+def _prewarm_scored_jobs_cache() -> None:
+    """
+    Compute the queue's score cache in the background at startup,
+    before the window even finishes opening, instead of on the first
+    real request.
+
+    On the real database this computation takes ~1.1s the first time
+    (SQLite reading a 300+MB file cold) — with nothing to overlap it
+    with, that lands as the very first thing the user sees on every
+    launch. Running it here happens concurrently with the webview
+    window actually opening, which reliably takes at least that long
+    on its own, so by the time the window is up and the page requests
+    it, the cache is usually already warm. Best-effort: if this fails
+    or loses the race, the first real request just computes it the
+    normal way, exactly as it did before this existed.
+    """
+    try:
+        with session() as conn:
+            scored_jobs(conn, Criteria.load())
+    except Exception:
+        pass
+
+
 def run(host: str = "127.0.0.1", port: int = 8765, native_window: bool = True) -> None:
     """
     Start the local server and present it.
@@ -488,6 +519,7 @@ def run(host: str = "127.0.0.1", port: int = 8765, native_window: bool = True) -
     for environments without a display server (or anyone who just
     prefers a normal tab).
     """
+    Thread(target=_prewarm_scored_jobs_cache, daemon=True).start()
     url = f"http://{host}:{port}"
 
     if not native_window:
