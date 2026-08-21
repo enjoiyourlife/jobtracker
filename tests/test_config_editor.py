@@ -170,6 +170,57 @@ class TestApplyEditable:
         assert criteria.location_disallow  # anchor still resolves to real data
 
 
+class TestWorkModes:
+    def test_missing_key_defaults_all_three_on(self, tmp_path):
+        """MINIMAL_CONFIG has no location.work_modes key at all — must
+        read as 'show everything', matching behavior before this existed."""
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        settings = load_editable(path)
+
+        assert settings.show_remote is True
+        assert settings.show_hybrid is True
+        assert settings.show_in_person is True
+
+    def test_round_trips_a_narrowed_selection(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        current = load_editable(path)
+        current.show_hybrid = False
+        current.show_in_person = False
+        apply_editable(current, path)
+
+        reloaded = load_editable(path)
+        assert reloaded.show_remote is True
+        assert reloaded.show_hybrid is False
+        assert reloaded.show_in_person is False
+
+    def test_written_compactly_not_one_item_per_line(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        apply_editable(load_editable(path), path)
+
+        lines = [l for l in path.read_text().splitlines() if "work_modes" in l]
+        assert lines == ["  work_modes: [remote, hybrid, in_person]"]
+
+    def test_the_criteria_the_poller_actually_uses_sees_the_same_change(self, tmp_path):
+        """Not just that Settings round-trips — that filters.Criteria.load()
+        (a separate, plain-PyYAML reader) agrees with what got saved."""
+        from jobtracker.filters import Criteria
+
+        path = tmp_path / "config.yaml"
+        path.write_text(MINIMAL_CONFIG)
+
+        current = load_editable(path)
+        current.show_hybrid = False
+        apply_editable(current, path)
+
+        assert Criteria.load(path).work_modes == {"remote", "in_person"}
+
+
 class TestAddBoards:
     def test_appends_to_existing_ats_list(self, tmp_path):
         path = tmp_path / "config.yaml"

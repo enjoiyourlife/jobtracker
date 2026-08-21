@@ -70,6 +70,9 @@ class ScoreBreakdown:
     reasons: tuple[str, ...] = field(default=())
 
 
+WORK_MODES = ("remote", "hybrid", "in_person")
+
+
 @dataclass(frozen=True)
 class Criteria:
     """Validated view of config.yaml. Constructed via Criteria.load()."""
@@ -79,6 +82,7 @@ class Criteria:
     seniority_penalized: tuple[str, ...]
     location_tiers: tuple[tuple[int, tuple[str, ...]], ...]
     location_disallow: tuple[str, ...]
+    work_modes: frozenset[str]
     max_years: int
     penalty_per_year: int
     min_score: int
@@ -130,6 +134,12 @@ class Criteria:
             location_tiers=tuple(tiers),
             location_disallow=tuple(
                 _lower(x) for x in raw["location"].get("disallow", [])
+            ),
+            # Absent key = every mode allowed, matching the behavior
+            # before this existed — an old config.yaml with no
+            # work_modes entry shouldn't suddenly start hiding postings.
+            work_modes=frozenset(
+                _lower(x) for x in raw["location"].get("work_modes", WORK_MODES)
             ),
             max_years=int(raw["experience"].get("max_years", 2)),
             penalty_per_year=int(raw["experience"].get("penalty_per_year", 15)),
@@ -189,6 +199,39 @@ def classify(title: str, criteria: Criteria) -> Classification:
     if _contains_term(lowered, criteria.role_include):
         return Classification.MATCH
     return Classification.UNCLASSIFIED
+
+
+def classify_work_mode(location: str | None) -> str:
+    """
+    'remote', 'hybrid', or 'in_person' read off a posting's location
+    string — one of WORK_MODES, always.
+
+    Deliberately stricter than the scoring tiers' remote-tier vocabulary
+    (which also credits a bare "United States" as remote-ish, fine for
+    a soft ranking nudge): work_mode_allowed() uses this to hide
+    postings outright, and guessing "remote" from a vague location
+    string would silently drop a real in-person posting. Only matches
+    the words that actually say so.
+    """
+    loc_lower = (location or "").lower()
+    if "hybrid" in loc_lower:
+        return "hybrid"
+    if "remote" in loc_lower:
+        return "remote"
+    return "in_person"
+
+
+def work_mode_allowed(location: str | None, criteria: Criteria) -> bool:
+    """
+    Hard filter alongside classify(): does this posting's work
+    arrangement match what the user wants to see at all?
+
+    Checked separately from classify() (title) rather than folded into
+    it, since it reasons about location, not title — same separation
+    of concerns classify()/score() already draw, just for a filter
+    instead of a ranking dimension.
+    """
+    return classify_work_mode(location) in criteria.work_modes
 
 
 def extract_years(description: str | None) -> int | None:

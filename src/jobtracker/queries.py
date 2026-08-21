@@ -14,7 +14,7 @@ from __future__ import annotations
 import sqlite3
 from threading import Lock
 
-from jobtracker.filters import Classification, Criteria, classify, score
+from jobtracker.filters import Classification, Criteria, classify, score, work_mode_allowed
 
 # entry_level_only -> its scored_jobs() result. Not keyed on anything
 # that identifies *which* database or criteria produced it, because
@@ -62,7 +62,8 @@ def scored_jobs(
     conn: sqlite3.Connection, criteria: Criteria, *, entry_level_only: bool = False
 ) -> dict[int, int]:
     """
-    Score every open posting that classifies as a coding role.
+    Score every open posting that classifies as a coding role and
+    matches the work-mode filter (remote/hybrid/in_person).
 
     Returns job_id -> score for those at or above min_score.
 
@@ -109,6 +110,7 @@ def scored_jobs(
         survivor_ids = [
             row["id"] for row in candidates
             if classify(row["title"], criteria) is Classification.MATCH
+            and work_mode_allowed(row["location"], criteria)
         ]
         if not survivor_ids:
             _cache[entry_level_only] = {}

@@ -425,8 +425,11 @@ def settings():
             )
             if cities.strip()
         ]
-        tiers = presets.with_remote(city_tiers, remote_on=request.form.get("remote_ok") == "on")
-        tiers = presets.with_hybrid(tiers, hybrid_on=request.form.get("hybrid_ok") == "on")
+        remote_on = request.form.get("remote_ok") == "on"
+        hybrid_on = request.form.get("hybrid_ok") == "on"
+        in_person_on = request.form.get("in_person_ok") == "on"
+        tiers = presets.with_remote(city_tiers, remote_on=remote_on)
+        tiers = presets.with_hybrid(tiers, hybrid_on=hybrid_on)
 
         level = request.form.get("experience_level", "custom")
         if level == "custom":
@@ -445,22 +448,32 @@ def settings():
             penalty_per_year=_safe_int(request.form.get("penalty_per_year"), default=15),
             min_score=presets.STRICTNESS_LEVELS[request.form.get("strictness", "balanced")],
             browser=request.form.get("browser", browser_launcher.SYSTEM_DEFAULT),
+            show_remote=remote_on,
+            show_hybrid=hybrid_on,
+            show_in_person=in_person_on,
         )
         apply_editable(updated)
         invalidate_scored_cache()
         return redirect(url_for("settings"))
 
     current = load_editable()
-    city_tiers, remote_on = presets.split_remote(current.tiers)
-    city_tiers, hybrid_on = presets.split_hybrid(city_tiers)
+    # The remote/hybrid *tiers* still only exist to give those postings
+    # a scoring bonus (with_remote/with_hybrid above) — stripped out
+    # here purely so they don't also show up as rows in the city-
+    # priority list. Whether each mode is shown at all is a separate
+    # question, answered by show_remote/show_hybrid/show_in_person
+    # (from location.work_modes), not by tier presence.
+    city_tiers, _ = presets.split_remote(current.tiers)
+    city_tiers, _ = presets.split_hybrid(city_tiers)
     return render_template(
         "settings.html",
         settings=current,
         city_tiers=[
             {"cities": t.cities, "priority": presets.closest_priority(t.score)} for t in city_tiers
         ],
-        remote_on=remote_on,
-        hybrid_on=hybrid_on,
+        remote_on=current.show_remote,
+        hybrid_on=current.show_hybrid,
+        in_person_on=current.show_in_person,
         priority_levels=presets.PRIORITY_LEVELS,
         experience_level=presets.guess_experience_level(
             current.seniority_preferred, current.seniority_penalized

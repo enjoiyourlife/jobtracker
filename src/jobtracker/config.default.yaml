@@ -248,6 +248,9 @@ _non_us_countries: &non_us_countries
 location:
   tiers: []
   disallow: *non_us_countries
+  # Which work arrangements to show at all — drop any of the three to
+  # hide that arrangement entirely (e.g. [remote] for remote-only).
+  work_modes: [remote, hybrid, in_person]
 
 experience:
   max_years: 2

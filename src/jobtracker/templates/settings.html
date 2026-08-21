@@ -77,17 +77,28 @@
       </select>
       <input type="text" name="tier_cities" class="city-input" autocomplete="off" value="" placeholder="add another place…">
     </div>
-    <label class="checkbox-row" style="margin-top: var(--sp-4);">
+    <div style="margin-top: var(--sp-4);">
+      <strong style="font-size: 13px;">Work arrangement</strong>
+      <small style="display: block; margin: 2px 0 var(--sp-2);">
+        Uncheck any of these to hide that arrangement entirely — leave only one checked for
+        "X only" (e.g. remote-only), or uncheck just one to allow the other two.
+      </small>
+    </div>
+    <label class="checkbox-row">
       <input type="checkbox" name="remote_ok" {{ 'checked' if remote_on else '' }}>
-      Also show remote-eligible roles
+      Remote
     </label>
     <label class="checkbox-row">
       <input type="checkbox" name="hybrid_ok" {{ 'checked' if hybrid_on else '' }}>
-      Also show hybrid roles
+      Hybrid
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" name="in_person_ok" {{ 'checked' if in_person_on else '' }}>
+      In-person / on-site
     </label>
     <small style="margin: var(--sp-1) 0 0;">
-      Only catches postings that literally say "hybrid" in their location — some hybrid roles just list
-      a city instead, which your priority list above already covers.
+      Remote/hybrid are detected from postings that literally say so in their location — some hybrid
+      roles just list a city instead, which your priority list above already covers regardless.
     </small>
   </fieldset>
 

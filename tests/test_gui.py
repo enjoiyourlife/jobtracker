@@ -143,23 +143,35 @@ class TestRoutesDontCrash:
         assert resp.status_code == 302
 
 
+def _base_settings_form(**overrides):
+    form = {
+        "tier_priority": ["top"],
+        "tier_cities": ["seattle"],
+        "role_include": "software engineer",
+        "role_exclude": "",
+        "experience_level": "entry",
+        "max_years": "2",
+        "penalty_per_year": "15",
+        "strictness": "balanced",
+        "browser": "system",
+        # Real checkboxes default checked (see settings.html) and a
+        # browser submits every checked box on a plain save — an
+        # omitted key here would silently mean "user unchecked all
+        # three," which isn't what an untouched, normal submission
+        # actually sends.
+        "remote_ok": "on",
+        "hybrid_ok": "on",
+        "in_person_ok": "on",
+    }
+    form.update(overrides)
+    return form
+
+
 class TestSettingsFormSubmission:
     """Regression coverage for the empty max_years/penalty_per_year 500."""
 
     def _base_form(self, **overrides):
-        form = {
-            "tier_priority": ["top"],
-            "tier_cities": ["seattle"],
-            "role_include": "software engineer",
-            "role_exclude": "",
-            "experience_level": "entry",
-            "max_years": "2",
-            "penalty_per_year": "15",
-            "strictness": "balanced",
-            "browser": "system",
-        }
-        form.update(overrides)
-        return form
+        return _base_settings_form(**overrides)
 
     def test_normal_submission_saves(self, client):
         resp = client.post("/settings", data=self._base_form())
@@ -183,6 +195,37 @@ class TestSettingsFormSubmission:
         saved = load_editable()
         assert saved.max_years == 2
         assert saved.penalty_per_year == 15
+
+
+class TestWorkModeCheckboxes:
+    """
+    Unchecked checkboxes simply aren't in form data at all — the actual
+    risk here isn't a crash (that's already covered by the empty-string
+    cases above), it's that "not present" must read as "off," not
+    silently keep whatever was there before.
+    """
+
+    def test_unchecking_a_box_omits_it_and_that_narrows_the_filter(self, client):
+        from jobtracker.config_editor import load_editable
+
+        form = _base_settings_form()
+        del form["hybrid_ok"]
+        client.post("/settings", data=form)
+
+        saved = load_editable()
+        assert saved.show_remote is True
+        assert saved.show_hybrid is False
+        assert saved.show_in_person is True
+
+    def test_all_boxes_checked_shows_every_mode(self, client):
+        from jobtracker.config_editor import load_editable
+
+        client.post("/settings", data=_base_settings_form())
+
+        saved = load_editable()
+        assert saved.show_remote is True
+        assert saved.show_hybrid is True
+        assert saved.show_in_person is True
 
 
 class TestApplicationsExport:

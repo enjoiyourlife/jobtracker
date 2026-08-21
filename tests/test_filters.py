@@ -17,8 +17,10 @@ from jobtracker.filters import (
     ConfigError,
     Criteria,
     classify,
+    classify_work_mode,
     extract_years,
     score,
+    work_mode_allowed,
 )
 
 
@@ -51,6 +53,26 @@ class TestConfigLoading:
         )
         with pytest.raises(ConfigError):
             Criteria.load(path)
+
+    def test_missing_work_modes_defaults_to_all_three(self, tmp_path):
+        """An old config.yaml with no work_modes key must behave exactly
+        as it did before this existed — nothing hidden by default."""
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            "role:\n  include: [software engineer]\n"
+            "seniority: {}\nlocation: {}\nexperience: {}\n"
+        )
+        assert Criteria.load(path).work_modes == {"remote", "hybrid", "in_person"}
+
+    def test_explicit_work_modes_are_read(self, tmp_path):
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            "role:\n  include: [software engineer]\n"
+            "seniority: {}\n"
+            "location:\n  work_modes: [remote]\n"
+            "experience: {}\n"
+        )
+        assert Criteria.load(path).work_modes == {"remote"}
 
 
 class TestClassification:
@@ -116,6 +138,66 @@ class TestClassification:
 
     def test_case_insensitive(self, crit):
         assert classify("SOFTWARE ENGINEER", crit) is Classification.MATCH
+
+
+class TestClassifyWorkMode:
+    @pytest.mark.parametrize(
+        "location", ["Remote", "Remote - US", "Remote (Bulgaria)", "REMOTE"]
+    )
+    def test_remote_locations(self, location):
+        assert classify_work_mode(location) == "remote"
+
+    @pytest.mark.parametrize("location", ["Hybrid - Seattle, WA", "Seattle (Hybrid)"])
+    def test_hybrid_locations(self, location):
+        assert classify_work_mode(location) == "hybrid"
+
+    @pytest.mark.parametrize(
+        "location", ["Seattle, WA", "San Francisco, CA", "United States", None, ""]
+    )
+    def test_everything_else_is_in_person(self, location):
+        """A bare 'United States' is deliberately NOT treated as remote
+        here — that's fine as a soft scoring signal (the location tiers
+        already do that), but wrong to hard-hide a posting over."""
+        assert classify_work_mode(location) == "in_person"
+
+
+class TestWorkModeAllowed:
+    def _criteria_with_modes(self, tmp_path, modes: str) -> Criteria:
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            "role:\n  include: [software engineer]\n"
+            "seniority: {}\n"
+            f"location:\n  work_modes: [{modes}]\n"
+            "experience: {}\n"
+        )
+        return Criteria.load(path)
+
+    def test_remote_only_hides_hybrid_and_in_person(self, tmp_path):
+        criteria = self._criteria_with_modes(tmp_path, "remote")
+
+        assert work_mode_allowed("Remote", criteria) is True
+        assert work_mode_allowed("Hybrid - Seattle", criteria) is False
+        assert work_mode_allowed("Seattle, WA", criteria) is False
+
+    def test_in_person_only_hides_remote_and_hybrid(self, tmp_path):
+        criteria = self._criteria_with_modes(tmp_path, "in_person")
+
+        assert work_mode_allowed("Seattle, WA", criteria) is True
+        assert work_mode_allowed("Remote", criteria) is False
+        assert work_mode_allowed("Hybrid - Seattle", criteria) is False
+
+    def test_remote_and_hybrid_hides_only_in_person(self, tmp_path):
+        criteria = self._criteria_with_modes(tmp_path, "remote, hybrid")
+
+        assert work_mode_allowed("Remote", criteria) is True
+        assert work_mode_allowed("Hybrid - Seattle", criteria) is True
+        assert work_mode_allowed("Seattle, WA", criteria) is False
+
+    def test_all_three_hides_nothing(self, crit):
+        """The default (shipped) config — nothing filtered on work mode."""
+        assert work_mode_allowed("Remote", crit) is True
+        assert work_mode_allowed("Hybrid - Seattle", crit) is True
+        assert work_mode_allowed("Seattle, WA", crit) is True
 
 
 class TestExtractYears:

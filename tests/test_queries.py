@@ -102,6 +102,31 @@ class TestScoredJobsEntryLevel:
         assert scored_jobs(db, strict, entry_level_only=True) == {}
 
 
+class TestScoredJobsWorkModeFilter:
+    def test_remote_only_excludes_in_person_postings(self, db, tmp_path):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [
+            make_job("1", "Software Engineer", location="Remote"),
+            make_job("2", "Software Engineer", location="Seattle, WA"),
+        ])
+        criteria = dataclasses.replace(_criteria(tmp_path), work_modes=frozenset({"remote"}))
+
+        result = scored_jobs(db, criteria)
+
+        remote_id = db.execute("SELECT id FROM jobs WHERE location = 'Remote'").fetchone()["id"]
+        assert set(result) == {remote_id}
+
+    def test_all_modes_allowed_excludes_nothing_on_work_mode(self, db, tmp_path):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [
+            make_job("1", "Software Engineer", location="Remote"),
+            make_job("2", "Software Engineer", location="Hybrid - Seattle"),
+            make_job("3", "Software Engineer", location="Seattle, WA"),
+        ])
+        result = scored_jobs(db, _criteria(tmp_path))
+        assert len(result) == 3
+
+
 class TestScoredJobsCache:
     """
     Regression coverage for the cache added to fix a queue page that

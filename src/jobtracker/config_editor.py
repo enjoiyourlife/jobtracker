@@ -99,6 +99,9 @@ class EditableSettings:
     min_score: int = 0
     browser: str = "system"  # which browser "Apply" opens postings in — see browser_launcher.py
     boards: dict[str, list[str]] = field(default_factory=dict)  # display only — see add_boards() to change these
+    show_remote: bool = True
+    show_hybrid: bool = True
+    show_in_person: bool = True
 
 
 def _flow_list(items: list[str]) -> CommentedSeq:
@@ -121,6 +124,9 @@ def save_raw(data: Any, path: Path | None = None) -> None:
 
 def load_editable(path: Path | None = None) -> EditableSettings:
     raw = load_raw(path)
+    # Absent key = every mode shown, matching behavior from before this
+    # existed — see filters.Criteria.load()'s identical default.
+    work_modes = set(raw["location"].get("work_modes", ("remote", "hybrid", "in_person")))
     return EditableSettings(
         tiers=[
             Tier(score=int(t["score"]), cities=", ".join(t["match"]))
@@ -135,6 +141,9 @@ def load_editable(path: Path | None = None) -> EditableSettings:
         min_score=int(raw.get("min_score", 0)),
         browser=str(raw.get("browser", "system")),
         boards={ats: list(slugs or []) for ats, slugs in (raw.get("boards") or {}).items()},
+        show_remote="remote" in work_modes,
+        show_hybrid="hybrid" in work_modes,
+        show_in_person="in_person" in work_modes,
     )
 
 
@@ -203,6 +212,20 @@ def apply_editable(settings: EditableSettings, path: Path | None = None) -> None
         raw["experience"]["penalty_per_year"] = settings.penalty_per_year
         raw["min_score"] = settings.min_score
         raw["browser"] = settings.browser
+
+        # A plain assignment rather than _replace_list(): work_modes is
+        # a new leaf key, never the previous key's last-item comment
+        # slot _replace_list exists to preserve, and it should always
+        # render compact ("[remote, hybrid]") rather than one item per
+        # line the way this file's other lists do.
+        modes = []
+        if settings.show_remote:
+            modes.append("remote")
+        if settings.show_hybrid:
+            modes.append("hybrid")
+        if settings.show_in_person:
+            modes.append("in_person")
+        raw["location"]["work_modes"] = _flow_list(modes)
 
         save_raw(raw, path)
 
