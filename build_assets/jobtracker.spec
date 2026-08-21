@@ -15,10 +15,19 @@
 #
 # Build with: pyinstaller build_assets/jobtracker.spec
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent  # project root; SPECPATH is injected by PyInstaller
 SRC = ROOT / "src" / "jobtracker"
+
+# Read rather than duplicate: CFBundleShortVersionString hardcoded here
+# separately from pyproject.toml's version is exactly how the built
+# app's "About" panel ended up stuck on 0.1.0 through three actual
+# releases — nothing ever bumped a string nobody was looking at, since
+# a git tag doesn't touch this file. One source of truth now.
+with (ROOT / "pyproject.toml").open("rb") as fh:
+    VERSION = tomllib.load(fh)["project"]["version"]
 
 icon = str(ROOT / "build_assets" / ("icon.icns" if sys.platform == "darwin" else "icon.ico"))
 
@@ -64,7 +73,7 @@ if sys.platform == "darwin":
         bundle_identifier="com.jobtracker.app",
         info_plist={
             "CFBundleName": "jobtracker",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": VERSION,
             "NSHighResolutionCapable": True,
         },
     )
