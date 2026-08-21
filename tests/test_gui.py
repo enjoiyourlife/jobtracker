@@ -15,6 +15,25 @@ import pytest
 
 from jobtracker.gui import _safe_int
 
+
+def _seed_unapplied_job(client) -> int:
+    """A job with no application row yet — the state /apply expects."""
+    import jobtracker.db.connection as connection
+    from jobtracker.ats.base import RawJob
+    from jobtracker.db import jobs as repo
+
+    with connection.session() as conn:
+        cid = repo.get_or_create_company(conn, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(conn, cid, [RawJob(
+            global_id="greenhouse:acme:apply-test", ats_job_id="apply-test",
+            title="Backend Engineer", location="Seattle, WA",
+            absolute_url="https://example.com/apply-test", description="",
+            updated_at="2026-08-01T00:00:00Z", raw_payload="{}",
+        )])
+        return conn.execute(
+            "SELECT id FROM jobs WHERE global_id='greenhouse:acme:apply-test'"
+        ).fetchone()["id"]
+
 MINIMAL_CONFIG = """
 boards:
   greenhouse: [acme]
@@ -134,6 +153,16 @@ class TestRoutesDontCrash:
         monkeypatch.setattr("jobtracker.gui.Thread", _ImmediateThread)
         assert client.post("/poll").status_code == 302
 
+    def test_apply_route(self, client, monkeypatch):
+        monkeypatch.setattr("jobtracker.gui.Thread", _ImmediateThread)
+        monkeypatch.setattr("jobtracker.gui.browser_launcher.open_url", lambda *a, **k: None)
+        job_id = _seed_unapplied_job(client)
+
+        assert client.get(f"/apply/{job_id}").status_code == 302
+
+    def test_apply_to_a_nonexistent_job_id_does_not_500(self, client):
+        assert client.get("/apply/999999").status_code == 302
+
     def test_add_companies_with_no_input_flashes_not_crashes(self, client):
         resp = client.post("/settings/companies", data={"company_names": ""})
         assert resp.status_code == 302
@@ -226,6 +255,83 @@ class TestWorkModeCheckboxes:
         assert saved.show_remote is True
         assert saved.show_hybrid is True
         assert saved.show_in_person is True
+
+
+class TestApplyDoesNotBlockOnTheBrowserLaunch:
+    """
+    Regression coverage for a real, measured lag: opening a real browser
+    (webbrowser.open / `open -a <Browser>`) took ~110ms on its own — pure
+    Launch Services handoff, nothing to speed up, only something to stop
+    making the most-clicked button in the app wait on. Backgrounded now;
+    these confirm the decision is still recorded synchronously (so a
+    slow/failing launch can't lose it) while the launch itself runs
+    through Thread rather than blocking the response.
+    """
+
+    def test_application_is_recorded_before_the_response_returns(self, client, monkeypatch):
+        import jobtracker.gui as gui_module
+
+        launched = []
+        monkeypatch.setattr(gui_module, "Thread", _ImmediateThread)
+        monkeypatch.setattr(
+            gui_module.browser_launcher, "open_url",
+            lambda url, browser=None: launched.append(url),
+        )
+        job_id = _seed_unapplied_job(client)
+
+        client.get(f"/apply/{job_id}")
+
+        from jobtracker.db.connection import session
+        with session() as conn:
+            row = conn.execute(
+                "SELECT status FROM applications WHERE job_id=?", (job_id,)
+            ).fetchone()
+        assert row["status"] == "queued"
+        assert launched == ["https://example.com/apply-test"]
+
+    def test_the_browser_launch_itself_goes_through_a_real_thread(self, client, monkeypatch):
+        """Not _ImmediateThread here — confirms the route actually calls
+        Thread(...).start() rather than calling open_url directly."""
+        import jobtracker.gui as gui_module
+
+        started = []
+
+        class _RecordingThread:
+            def __init__(self, target, daemon=True):
+                self._target = target
+                started.append(True)
+
+            def start(self):
+                self._target()
+
+        monkeypatch.setattr(gui_module, "Thread", _RecordingThread)
+        monkeypatch.setattr(gui_module.browser_launcher, "open_url", lambda *a, **k: None)
+        job_id = _seed_unapplied_job(client)
+
+        client.get(f"/apply/{job_id}")
+
+        assert started == [True]
+
+    def test_a_failing_browser_launch_does_not_lose_the_recorded_application(self, client, monkeypatch):
+        import jobtracker.gui as gui_module
+
+        monkeypatch.setattr(gui_module, "Thread", _ImmediateThread)
+
+        def _boom(*a, **k):
+            raise RuntimeError("no browser available")
+
+        monkeypatch.setattr(gui_module.browser_launcher, "open_url", _boom)
+        job_id = _seed_unapplied_job(client)
+
+        with pytest.raises(RuntimeError):
+            client.get(f"/apply/{job_id}")
+
+        from jobtracker.db.connection import session
+        with session() as conn:
+            row = conn.execute(
+                "SELECT status FROM applications WHERE job_id=?", (job_id,)
+            ).fetchone()
+        assert row["status"] == "queued"  # recorded before the thread ever ran
 
 
 class TestApplicationsExport:

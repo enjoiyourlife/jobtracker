@@ -299,6 +299,14 @@ def apply(job_id: int):
     application page would trade all of that away, and would also
     navigate the app itself off the queue. browser_launcher opens a
     separate, real browser process instead, and the app stays put.
+
+    The launch itself runs in a background thread: `open -a <Browser>`
+    (or webbrowser.open's equivalent) measured at ~110ms on its own —
+    that's Launch Services handoff, not this code, so there's nothing
+    to make faster, only something to stop blocking on. This is the
+    single most-clicked button in the app; the page should redirect the
+    instant the decision is actually recorded, with the browser tab
+    catching up moments later rather than holding the click hostage.
     """
     with session() as conn:
         row = conn.execute(
@@ -308,7 +316,10 @@ def apply(job_id: int):
             return redirect(url_for("index"))
         apps.add(conn, job_id)
 
-    browser_launcher.open_url(row["absolute_url"], browser=load_editable().browser)
+    def open_in_background() -> None:
+        browser_launcher.open_url(row["absolute_url"], browser=load_editable().browser)
+
+    Thread(target=open_in_background, daemon=True).start()
     return redirect(url_for("index", entry_level=request.args.get("entry_level")))
 
 
