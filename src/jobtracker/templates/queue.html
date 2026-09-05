@@ -58,11 +58,27 @@
     if (!res.ok) return;
     const data = await res.json();
 
-    const existingIds = new Set(
-      Array.from(list.querySelectorAll("[data-job-id]")).map((el) => el.dataset.jobId)
+    const freshIds = new Set(data.entries.map((e) => String(e.job_id)));
+    const existingCards = Array.from(list.querySelectorAll("[data-job-id]"));
+
+    // A poll that closes stale postings previously only ever grew the
+    // list — new cards prepended, but nothing removed, so closed
+    // postings stuck around until a full page reload. Drop anything no
+    // longer in the fresh result before adding what's new.
+    for (const card of existingCards) {
+      if (!freshIds.has(card.dataset.jobId)) card.remove();
+    }
+
+    // Cards that survived the removal above are already on screen —
+    // everything else in existingCards just got removed, so this is
+    // exactly the "don't re-add a duplicate" set.
+    const stillOnScreen = new Set(
+      existingCards
+        .filter((card) => freshIds.has(card.dataset.jobId))
+        .map((card) => card.dataset.jobId)
     );
     for (const entry of data.entries) {
-      if (existingIds.has(String(entry.job_id))) continue;
+      if (stillOnScreen.has(String(entry.job_id))) continue;
       const wrapper = document.createElement("div");
       wrapper.innerHTML = entry.html.trim();
       const card = wrapper.firstElementChild;
@@ -72,7 +88,7 @@
     }
     if (countEl) countEl.textContent = data.count + " awaiting decision";
     const empty = document.getElementById("queue-empty");
-    if (empty && data.count > 0) empty.style.display = "none";
+    if (empty) empty.style.display = data.count > 0 ? "none" : "";
   }
 
   window.jobtrackerStatus.onUpdate(refresh);

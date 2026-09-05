@@ -402,6 +402,35 @@ window.jobtrackerStatus = (function () {
   tick();
   return { onUpdate: (fn) => listeners.push(fn) };
 })();
+
+// Every action on this app — Settings' Save, Remove on Status/
+// Applications, Mark submitted — is a plain form POST that redirects
+// back to the same page. That's a real navigation, so the browser
+// resets scroll to the top by default: fine for a short page, jarring
+// on Settings (adding one city near the bottom, then getting bounced
+// back to "Which companies?" at the very top) or a long Queue/
+// Applications list. Save the scroll position right before any POST
+// leaves the page, restore it once the reloaded page's content exists
+// to scroll to. Keyed by pathname (not just "the last saved position")
+// so a POST on one page can't restore a leftover position from a
+// different one navigated to in between.
+(function () {
+  const KEY = "jobtracker-scroll:" + window.location.pathname;
+  const content = document.querySelector(".content");
+  if (!content) return;
+
+  const saved = sessionStorage.getItem(KEY);
+  if (saved !== null) {
+    content.scrollTop = parseInt(saved, 10);
+    sessionStorage.removeItem(KEY);
+  }
+
+  document.addEventListener("submit", (e) => {
+    if (e.target.tagName === "FORM" && e.target.method.toLowerCase() === "post") {
+      sessionStorage.setItem(KEY, String(content.scrollTop));
+    }
+  });
+})();
 </script>
 </body>
 </html>

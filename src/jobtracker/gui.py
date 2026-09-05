@@ -34,6 +34,7 @@ from jobtracker.config_editor import (
     remove_board,
 )
 from jobtracker.db import applications as apps
+from jobtracker.db import jobs as jobs_repo
 from jobtracker.db.applications import GHOST_THRESHOLD_DAYS
 from jobtracker.db.connection import session
 from jobtracker.filters import Criteria
@@ -224,6 +225,23 @@ def remove_company():
     if ats and slug:
         remove_board(ats, slug)
         flash(f"Removed {slug}.")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/reset-queue", methods=["POST"])
+def reset_queue():
+    """
+    Close every open, undecided posting — Settings' "Reset queue"
+    button. Doesn't touch Applications/Status history (those already
+    have an application row and were never part of this pool); doesn't
+    permanently lose anything still genuinely live either, since the
+    next poll reopens anything it still sees. See
+    jobs_repo.close_all_undecided's docstring for why that's safe.
+    """
+    with session() as conn:
+        closed = jobs_repo.close_all_undecided(conn)
+    invalidate_scored_cache()
+    flash(f"Cleared {closed} posting{'s' if closed != 1 else ''} from the queue.")
     return redirect(url_for("settings"))
 
 
@@ -559,6 +577,14 @@ def run(host: str = "127.0.0.1", port: int = 8765, native_window: bool = True) -
     prefers a normal tab).
     """
     Thread(target=_prewarm_scored_jobs_cache, daemon=True).start()
+    # Every launch starts a poll automatically — otherwise the queue
+    # only ever reflects whenever someone last remembered to click the
+    # button, and a relaunch just shows the exact same postings as
+    # last time even if plenty have closed since. Already
+    # non-blocking and already guarded against double-polling
+    # (_poll_state["running"]), so this is exactly the same call the
+    # button itself makes, just fired once up front.
+    _start_poll()
     url = f"http://{host}:{port}"
 
     if not native_window:

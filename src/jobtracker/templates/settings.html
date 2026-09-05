@@ -169,6 +169,23 @@
   </button>
 </form>
 
+<fieldset style="margin-top: var(--sp-6);">
+  <legend>Reset queue</legend>
+  <small>
+    Closes everything currently sitting in the Queue with no decision made yet — a fresh start if it's
+    built up postings you don't want to work through. Doesn't touch Applications or Status history, and
+    anything still genuinely open comes right back the next time you poll.
+  </small>
+  <form method="post" action="{{ url_for('reset_queue') }}"
+        onsubmit="return confirm('Clear everything currently in the queue? Anything still actually open comes back on the next poll.');"
+        style="margin-top: var(--sp-3);">
+    <button type="submit" class="btn btn-ghost btn-ghost-danger">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M5 6h10M8 6V4.5a1 1 0 011-1h2a1 1 0 011 1V6m-7 0l.6 9a1 1 0 001 .9h4.8a1 1 0 001-.9l.6-9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Clear queue
+    </button>
+  </form>
+</fieldset>
+
 <script>
 // Per-segment autocomplete for the comma-separated city fields. Native
 // <datalist> matches against the whole input value, which breaks down

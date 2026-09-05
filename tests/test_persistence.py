@@ -151,6 +151,48 @@ class TestClosure:
         assert row["closed_at"] is None
 
 
+class TestCloseAllUndecided:
+    """Settings' 'Reset queue' button — jobs_repo.close_all_undecided()."""
+
+    def test_closes_postings_with_no_application(self, db):
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1"), make_job("2")])
+
+        closed = repo.close_all_undecided(db)
+
+        assert closed == 2
+        open_count = db.execute(
+            "SELECT COUNT(*) FROM jobs WHERE closed_at IS NULL"
+        ).fetchone()[0]
+        assert open_count == 0
+
+    def test_leaves_decided_postings_untouched(self, db):
+        """A posting with an application row — applied, skipped,
+        rejected, anything — was never part of the queue's pool and
+        must not be affected by resetting it."""
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1"), make_job("2")])
+        job1, job2 = [r["id"] for r in db.execute("SELECT id FROM jobs ORDER BY id")]
+        apps.add(db, job1, status="skipped")
+
+        repo.close_all_undecided(db)
+
+        row = db.execute("SELECT closed_at FROM jobs WHERE id = ?", (job1,)).fetchone()
+        assert row["closed_at"] is None  # untouched — already had a decision
+
+    def test_a_posting_still_live_reopens_on_the_next_poll(self, db):
+        """The actual safety property: this can't permanently hide
+        something that's genuinely still open."""
+        cid = repo.get_or_create_company(db, "Acme", "greenhouse", "acme")
+        repo.upsert_jobs(db, cid, [make_job("1")])
+
+        repo.close_all_undecided(db)
+        assert db.execute("SELECT closed_at FROM jobs").fetchone()["closed_at"] is not None
+
+        repo.upsert_jobs(db, cid, [make_job("1")])  # still on the board
+        assert db.execute("SELECT closed_at FROM jobs").fetchone()["closed_at"] is None
+
+
 def make_entry(job_id: int, **kw) -> apps.QueueEntry:
     """Minimal QueueEntry for tests; overrides via kwargs."""
     defaults = dict(

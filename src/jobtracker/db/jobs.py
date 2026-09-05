@@ -135,3 +135,32 @@ def close_missing_jobs(
         (utc_now(), company_id, *seen_global_ids),
     )
     return cursor.rowcount
+
+
+def close_all_undecided(conn: sqlite3.Connection) -> int:
+    """
+    Close every open posting with no application row — the entire pool
+    the Queue page draws from. Settings' "Reset queue" button.
+
+    Safe to call at all: a posting closed here that's still genuinely
+    live on the company's board comes right back at the next poll —
+    upsert_jobs()'s ON CONFLICT clears closed_at on any job it still
+    sees, so this can't permanently hide something that's actually
+    still open. What it actually clears out is everything that's
+    accumulated in the queue without a decision, good or stale alike;
+    a "skipped" posting already has an application row and was never
+    part of this pool to begin with.
+
+    Returns:
+        Number of postings closed.
+    """
+    cursor = conn.execute(
+        """
+        UPDATE jobs
+           SET closed_at = ?
+         WHERE closed_at IS NULL
+           AND id NOT IN (SELECT job_id FROM applications)
+        """,
+        (utc_now(),),
+    )
+    return cursor.rowcount

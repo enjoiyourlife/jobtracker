@@ -226,6 +226,34 @@ class TestSettingsFormSubmission:
         assert saved.penalty_per_year == 15
 
 
+class TestResetQueue:
+    def test_closes_undecided_jobs_and_redirects(self, client):
+        from jobtracker.db.connection import session
+
+        job_id = _seed_unapplied_job(client)
+
+        resp = client.post("/settings/reset-queue")
+
+        assert resp.status_code == 302
+        with session() as conn:
+            row = conn.execute("SELECT closed_at FROM jobs WHERE id=?", (job_id,)).fetchone()
+        assert row["closed_at"] is not None
+
+    def test_does_not_touch_decided_jobs(self, client):
+        from jobtracker.db.connection import session
+
+        job_id = TestApplicationsExport()._seed_one_application(client)  # status='queued'
+
+        client.post("/settings/reset-queue")
+
+        with session() as conn:
+            row = conn.execute("SELECT closed_at FROM jobs WHERE id=?", (job_id,)).fetchone()
+        assert row["closed_at"] is None
+
+    def test_empty_queue_does_not_500(self, client):
+        assert client.post("/settings/reset-queue").status_code == 302
+
+
 class TestWorkModeCheckboxes:
     """
     Unchecked checkboxes simply aren't in form data at all — the actual
@@ -450,3 +478,26 @@ class TestPollWorker:
 
         assert started is True
         assert gui_module._poll_state["running"] is False
+
+
+class TestRunAutoPolls:
+    """
+    Regression coverage for "stale jobs on relaunch": without this,
+    the queue only ever reflects whenever someone last remembered to
+    click 'Poll for new postings,' and reopening the app shows the
+    exact same postings as last time even if plenty have closed since.
+    run() now fires the same call the button does, once, at startup.
+    """
+
+    def test_run_starts_a_poll_on_launch(self, monkeypatch):
+        import jobtracker.gui as gui_module
+
+        monkeypatch.setattr(gui_module.app, "run", lambda **kw: None)
+        monkeypatch.setattr(gui_module, "Timer", lambda *a, **k: type("T", (), {"start": lambda self: None})())
+
+        calls = []
+        monkeypatch.setattr(gui_module, "_start_poll", lambda: calls.append(True))
+
+        gui_module.run(native_window=False)
+
+        assert calls == [True]
