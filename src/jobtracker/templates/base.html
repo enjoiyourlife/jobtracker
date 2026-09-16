@@ -372,16 +372,31 @@ window.jobtrackerStatus = (function () {
 
   function updateBanner(status) {
     const banner = document.getElementById("status-banner");
-    if (!banner) return;
-    const text = banner.querySelector(".status-text");
-    if (status.resolving) {
-      banner.style.display = "";
-      text.textContent = "Looking up companies…";
-    } else if (status.polling) {
-      banner.style.display = "";
-      text.textContent = `Polling boards for new postings (${status.poll_done}/${status.poll_total})…`;
-    } else {
-      banner.style.display = "none";
+    if (banner) {
+      const text = banner.querySelector(".status-text");
+      if (status.resolving) {
+        banner.style.display = "";
+        text.textContent = "Looking up companies…";
+      } else if (status.polling) {
+        banner.style.display = "";
+        text.textContent = `Polling boards for new postings (${status.poll_done}/${status.poll_total})…`;
+      } else {
+        banner.style.display = "none";
+      }
+    }
+
+    // The sidebar's own button is server-rendered from
+    // polling_in_progress at whatever moment the page happened to
+    // load — without this it stays stuck on "Polling…" (disabled)
+    // forever once a poll started before this page loaded finishes,
+    // since nothing else here ever reloads the page to pick up the
+    // fresh state. Markup mirrors base.html's Jinja version exactly.
+    const pollBtn = document.querySelector(".poll-btn");
+    if (pollBtn) {
+      pollBtn.disabled = status.polling;
+      pollBtn.innerHTML = status.polling
+        ? '<svg class="spin" viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Polling…'
+        : '<svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-6.32 4M3 3v4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Poll for new postings';
     }
   }
 

@@ -7,8 +7,10 @@
   <legend>Which companies should be tracked?</legend>
   <small>
     {{ company_count }} compan{{ 'y' if company_count == 1 else 'ies' }} configured.
-    Type company names below — each one is looked up automatically against Greenhouse, Lever, and Ashby
-    and added if a live board is found.
+    Search for a company or type any name and press Enter to queue it, then look them all up at
+    once — each one is checked live against Greenhouse, Lever, and Ashby and added only if a live
+    board is found. The search suggests a few hundred well-known companies to jog your memory; it's
+    not a limit — anything you type gets checked exactly the same way.
   </small>
 
   {% if resolve_found %}
@@ -24,11 +26,13 @@
   </div>
   {% endif %}
 
-  <form method="post" action="{{ url_for('add_companies') }}" style="margin-top: var(--sp-3);">
-    <label style="margin-top:0;">Company names — one per line</label>
-    <small>e.g. Stripe, Figma, Anduril Industries</small>
-    <textarea name="company_names" rows="4" placeholder="Stripe&#10;Figma&#10;Anduril Industries"></textarea>
-    <button type="submit" class="btn btn-primary" style="margin-top: var(--sp-3);" {{ 'disabled' if resolving_companies else '' }}>
+  <form method="post" action="{{ url_for('add_companies') }}" style="margin-top: var(--sp-3);" id="add-companies-form">
+    <label style="margin-top:0;">Add a company</label>
+    <input type="text" id="company-search" class="city-input" autocomplete="off"
+           placeholder="Search or type a company name, then press Enter">
+    <div id="pending-companies" style="display:flex; flex-wrap:wrap; gap:6px; margin-top: var(--sp-3);"></div>
+    <textarea name="company_names" id="company-names-field" hidden></textarea>
+    <button type="submit" class="btn btn-primary" style="margin-top: var(--sp-3);" id="add-companies-submit" disabled>
       <svg viewBox="0 0 20 20" fill="none"><path d="M13 13l4 4M4 9a5 5 0 1010 0 5 5 0 00-10 0z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       {{ 'Looking up…' if resolving_companies else 'Look up and add' }}
     </button>
@@ -240,7 +244,133 @@
     input.addEventListener("blur", () => setTimeout(close, 150));
   }
 
-  document.querySelectorAll(".city-input").forEach(attach);
+  // Excludes #company-search: it shares .city-input purely for visual
+  // styling, but binds its own suggestion/pending-list behavior below
+  // rather than this segment-of-a-comma-list logic, which doesn't apply.
+  document.querySelectorAll(".city-input:not(#company-search)").forEach(attach);
+})();
+
+// Search-to-queue for adding companies: suggests from a few hundred
+// well-known names (COMPANY_DIRECTORY — a starting point, not a
+// limit) as you type, and Enter queues whatever's typed regardless of
+// whether it matched a suggestion. Queued names just populate the
+// same hidden company_names field the form always posted — nothing
+// about the actual add/resolve flow changed, only how names get into
+// that field. Replaces the old plain textarea, which meant typing
+// blind with no idea what to try.
+(function () {
+  const COMPANIES = {{ company_directory | tojson }};
+  const search = document.getElementById("company-search");
+  const pendingEl = document.getElementById("pending-companies");
+  const hiddenField = document.getElementById("company-names-field");
+  const submitBtn = document.getElementById("add-companies-submit");
+  const isResolving = {{ 'true' if resolving_companies else 'false' }};
+  if (!search) return;
+
+  const pending = [];
+  let box = null;
+
+  function escapeHtml(s) {
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function sync() {
+    hiddenField.value = pending.join("\n");
+    submitBtn.disabled = pending.length === 0 || isResolving;
+  }
+
+  function render() {
+    pendingEl.innerHTML = pending.map((name, i) => `
+      <button type="button" class="chip" data-i="${i}" title="Remove">
+        ${escapeHtml(name)}
+        <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    `).join("");
+    pendingEl.querySelectorAll(".chip").forEach((btn) => {
+      btn.onclick = () => {
+        pending.splice(Number(btn.dataset.i), 1);
+        render();
+        sync();
+      };
+    });
+  }
+
+  function addPending(name) {
+    name = name.trim();
+    if (!name || pending.some((n) => n.toLowerCase() === name.toLowerCase())) return;
+    pending.push(name);
+    render();
+    sync();
+  }
+
+  function closeBox() { if (box) { box.remove(); box = null; } }
+
+  function showSuggestions() {
+    closeBox();
+    const q = search.value.trim().toLowerCase();
+    if (!q) return;
+    const matches = COMPANIES
+      .filter((c) => c.toLowerCase().includes(q) && !pending.includes(c))
+      .slice(0, 8);
+    if (!matches.length) return;
+
+    box = document.createElement("div");
+    box.className = "autocomplete-box";
+    matches.forEach((name) => {
+      const item = document.createElement("div");
+      item.className = "autocomplete-item";
+      item.textContent = name;
+      item.onmousedown = (e) => {
+        e.preventDefault();
+        addPending(name);
+        search.value = "";
+        closeBox();
+        search.focus();
+      };
+      box.appendChild(item);
+    });
+
+    const rect = search.getBoundingClientRect();
+    box.style.left = rect.left + "px";
+    box.style.top = rect.bottom + 4 + "px";
+    box.style.width = rect.width + "px";
+    document.body.appendChild(box);
+  }
+
+  search.addEventListener("input", showSuggestions);
+  search.addEventListener("blur", () => setTimeout(closeBox, 150));
+  search.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    addPending(search.value);
+    search.value = "";
+    closeBox();
+  });
+})();
+
+// The "Looking up…" button and the Added/Couldn't-find messages below
+// it are all rendered server-side from resolving_companies/
+// resolve_found/resolve_missing at whatever moment this page loaded —
+// none of that updates once the background lookup actually finishes,
+// so the button just looks stuck on "Looking up…" forever otherwise.
+// A reload is the simplest correct fix (those results have no
+// client-side representation to patch in directly); scroll position
+// survives it the same way any other same-page action already does.
+(function () {
+  if (!window.jobtrackerStatus) return;
+  let wasResolving = {{ 'true' if resolving_companies else 'false' }};
+  window.jobtrackerStatus.onUpdate((status) => {
+    if (wasResolving && !status.resolving) {
+      const content = document.querySelector(".content");
+      if (content) {
+        sessionStorage.setItem("jobtracker-scroll:" + window.location.pathname, String(content.scrollTop));
+      }
+      window.location.reload();
+    }
+    wasResolving = status.resolving;
+  });
 })();
 </script>
 {% endblock %}

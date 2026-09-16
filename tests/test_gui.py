@@ -254,6 +254,29 @@ class TestResetQueue:
         assert client.post("/settings/reset-queue").status_code == 302
 
 
+class TestCompanySearchUI:
+    """
+    Regression coverage for replacing the plain textarea with a
+    search-to-queue UI: the actual add/resolve flow (add_companies,
+    resolve_all) is unchanged and already covered elsewhere — what's
+    new here is that the page ships the pieces that UI depends on.
+    """
+
+    def test_settings_page_includes_the_search_input(self, client):
+        body = client.get("/settings").data
+        assert b'id="company-search"' in body
+
+    def test_settings_page_embeds_the_company_directory(self, client):
+        body = client.get("/settings").data
+        assert b"Stripe" in body  # a real entry from COMPANY_DIRECTORY
+
+    def test_hidden_company_names_field_still_posts_to_add_companies(self, client):
+        """The JS populates a hidden field before submit — confirms the
+        form still posts under the same field name add_companies() reads."""
+        resp = client.post("/settings/companies", data={"company_names": "Acme"})
+        assert resp.status_code == 302
+
+
 class TestWorkModeCheckboxes:
     """
     Unchecked checkboxes simply aren't in form data at all — the actual
