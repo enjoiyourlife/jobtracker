@@ -44,6 +44,7 @@ from jobtracker.queries import scored_jobs
 from jobtracker.resolver import resolve_all
 from jobtracker.company_directory import COMPANY_DIRECTORY
 from jobtracker.us_cities import US_TECH_CITIES
+from jobtracker.us_states import US_STATES
 
 PIPELINE_ORDER = [
     "queued", "skipped", "submitted", "acknowledged",
@@ -513,6 +514,7 @@ def settings():
         strictness_labels=presets.STRICTNESS_LABELS,
         available_browsers=browser_launcher.available_browsers(),
         us_cities=US_TECH_CITIES,
+        us_states=US_STATES,
         company_directory=COMPANY_DIRECTORY,
         company_count=sum(len(s) for s in current.boards.values()),
         resolve_found=_resolve_state["found"],

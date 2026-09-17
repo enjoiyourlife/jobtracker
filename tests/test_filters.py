@@ -227,6 +227,56 @@ class TestExtractYears:
         assert extract_years("Founded 40 years ago") is None
 
 
+class TestStateLevelLocationMatching:
+    """
+    Regression coverage for the Settings page's state/country search:
+    the matching engine (_contains_term) never had any notion of
+    "city" — a state name or abbreviation was always usable as a
+    location.tiers match term, the same as a city name. These pin that
+    down explicitly rather than leaving it as an accident of
+    substring matching nobody actually verified.
+    """
+
+    def _criteria_with_tier(self, tmp_path, terms: str) -> Criteria:
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            "role:\n  include: [software engineer]\n"
+            "seniority: {}\n"
+            f"location:\n  tiers:\n    - score: 30\n      match: [{terms}]\n"
+            "experience: {}\n"
+        )
+        return Criteria.load(path)
+
+    def test_state_abbreviation_matches_every_city_in_that_state(self, tmp_path):
+        criteria = self._criteria_with_tier(tmp_path, "wa")
+
+        for city in ("Seattle, WA", "Tacoma, WA", "Spokane, WA"):
+            assert score("Software Engineer", city, None, criteria).location == 30
+
+    def test_state_abbreviation_does_not_match_a_different_state(self, tmp_path):
+        criteria = self._criteria_with_tier(tmp_path, "wa")
+        assert score("Software Engineer", "San Francisco, CA", None, criteria).location == 0
+
+    def test_state_abbreviation_does_not_false_match_inside_a_city_name(self, tmp_path):
+        """'WA' must not fire just because it's a substring of 'Walla
+        Walla' — only a real standalone ', WA' token should count."""
+        criteria = self._criteria_with_tier(tmp_path, "wa")
+        # Walla Walla, WA legitimately matches (it's actually in WA) —
+        # the real test is that the match comes from the trailing ", WA"
+        # token, not a false hit inside "Walla" itself.
+        assert score("Software Engineer", "Walla Walla, WA", None, criteria).location == 30
+        assert score("Software Engineer", "Walla Walla, OR", None, criteria).location == 0
+
+    def test_full_state_name_matches_a_spelled_out_location(self, tmp_path):
+        criteria = self._criteria_with_tier(tmp_path, "washington")
+        s = score("Software Engineer", "Seattle, Washington", None, criteria)
+        assert s.location == 30
+
+    def test_united_states_matches_broadly(self, tmp_path):
+        criteria = self._criteria_with_tier(tmp_path, "united states")
+        assert score("Software Engineer", "Austin, Texas, United States", None, criteria).location == 30
+
+
 class TestScoring:
     def test_preferred_location_scores(self, crit):
         assert score("Software Engineer", "Seattle, WA", None, crit).location > 0

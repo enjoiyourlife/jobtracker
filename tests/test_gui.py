@@ -254,6 +254,20 @@ class TestResetQueue:
         assert client.post("/settings/reset-queue").status_code == 302
 
 
+class TestLocationStateSearch:
+    """The city-priority autocomplete also suggests states and 'United
+    States' — see us_states.py's docstring for why matching already
+    worked, and this is only exposing it."""
+
+    def test_settings_page_embeds_state_names(self, client):
+        body = client.get("/settings").data
+        assert b"Washington" in body  # a real entry from US_STATES
+
+    def test_settings_page_offers_a_united_states_wide_suggestion(self, client):
+        body = client.get("/settings").data
+        assert b"United States" in body
+
+
 class TestCompanySearchUI:
     """
     Regression coverage for replacing the plain textarea with a

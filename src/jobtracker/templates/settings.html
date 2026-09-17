@@ -62,7 +62,11 @@
 <form method="post">
   <fieldset>
     <legend>Where do you want to work?</legend>
-    <small>Pick a priority for each place. Leave a row's cities blank to remove it.</small>
+    <small>
+      Pick a priority for each place. Leave a row's cities blank to remove it. Type a state
+      (e.g. "Washington") or "United States" to match every city in it, not just specific ones —
+      the search suggests both.
+    </small>
     {% for t in city_tiers %}
     <div class="tier-row">
       <select name="tier_priority">
@@ -196,8 +200,31 @@
 // the moment there's more than one city typed — this instead looks at
 // only the text after the last comma, since that's the segment
 // actually being typed.
+//
+// Matching a posting's location is plain substring/word-boundary text
+// matching (filters._contains_term) — it has no notion of "city" vs
+// "state", so a state name or abbreviation already works as a match
+// term today the same way a city does ("wa" matches "Seattle, WA"
+// without false-matching inside "Walla Walla," since short terms get
+// word-boundary handling). The only real gap was that nothing ever
+// suggested states existed to type — SUGGESTIONS below mixes cities,
+// states, and "United States" into one list so all three are
+// discoverable from the same box. A state suggestion inserts *both*
+// its full name and abbreviation, since real postings use either
+// depending on the company ("Seattle, WA" vs "Costa Mesa, California,
+// United States" both show up in practice) — the one known tradeoff
+// is "Washington" the state's full name also substring-matches
+// "Washington, DC" postings, a state/city name collision no text
+// matcher resolves without real geocoding; narrow enough not to be
+// worth the complexity of special-casing.
 (function () {
   const CITIES = {{ us_cities | tojson }};
+  const STATES = {{ us_states | tojson }};
+  const SUGGESTIONS = [
+    ...CITIES.map((c) => ({ label: c, terms: [c] })),
+    ...STATES.map(([name, abbr]) => ({ label: `${name} — every city in the state`, terms: [name, abbr] })),
+    { label: "United States — every US city", terms: ["united states"] },
+  ];
 
   function attach(input) {
     let box = null;
@@ -212,21 +239,21 @@
       close();
       const seg = segment().toLowerCase();
       if (!seg) return;
-      const matches = CITIES.filter((c) => c.toLowerCase().includes(seg)).slice(0, 6);
+      const matches = SUGGESTIONS.filter((s) => s.label.toLowerCase().includes(seg)).slice(0, 6);
       if (!matches.length) return;
 
       box = document.createElement("div");
       box.className = "autocomplete-box";
-      matches.forEach((city) => {
+      matches.forEach((suggestion) => {
         const item = document.createElement("div");
         item.className = "autocomplete-item";
-        item.textContent = city;
+        item.textContent = suggestion.label;
         item.onmousedown = (e) => {
           e.preventDefault();
           const v = input.value;
           const lastComma = v.lastIndexOf(",");
           const prefix = lastComma >= 0 ? v.slice(0, lastComma + 1) + " " : "";
-          input.value = prefix + city + ", ";
+          input.value = prefix + suggestion.terms.join(", ") + ", ";
           close();
           input.focus();
         };
