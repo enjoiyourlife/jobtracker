@@ -28,9 +28,8 @@
     {% else %}
       Queue empty.<br>
       <form method="post" action="{{ url_for('poll') }}" style="display:inline;">
-        <button type="submit" class="btn btn-primary" style="margin-top: var(--sp-3);" {{ 'disabled' if polling_in_progress else '' }}>
-          <svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-6.32 4M3 3v4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          {{ 'Polling…' if polling_in_progress else 'Poll for new postings' }}
+        <button type="submit" class="btn btn-primary" data-poll-button style="margin-top: var(--sp-3);" {{ 'disabled' if polling_in_progress else '' }}>
+          {% include "_poll_button.html" with context %}
         </button>
       </form>
       <br><small style="margin-top: var(--sp-2);">Or lower the strictness in Settings, or clear the entry-level filter.</small>
@@ -99,24 +98,21 @@ window.jobtrackerQueueSearch = (function () {
     const data = await res.json();
 
     const freshIds = new Set(data.entries.map((e) => String(e.job_id)));
-    const existingCards = Array.from(list.querySelectorAll("[data-job-id]"));
 
     // A poll that closes stale postings previously only ever grew the
     // list — new cards prepended, but nothing removed, so closed
-    // postings stuck around until a full page reload. Drop anything no
-    // longer in the fresh result before adding what's new.
-    for (const card of existingCards) {
-      if (!freshIds.has(card.dataset.jobId)) card.remove();
+    // postings stuck around until a full page reload. One pass over
+    // what's currently on screen: remove anything no longer in the
+    // fresh result, and note what survives so the loop below knows
+    // not to re-add it as a duplicate.
+    const stillOnScreen = new Set();
+    for (const card of list.querySelectorAll("[data-job-id]")) {
+      if (freshIds.has(card.dataset.jobId)) {
+        stillOnScreen.add(card.dataset.jobId);
+      } else {
+        card.remove();
+      }
     }
-
-    // Cards that survived the removal above are already on screen —
-    // everything else in existingCards just got removed, so this is
-    // exactly the "don't re-add a duplicate" set.
-    const stillOnScreen = new Set(
-      existingCards
-        .filter((card) => freshIds.has(card.dataset.jobId))
-        .map((card) => card.dataset.jobId)
-    );
     for (const entry of data.entries) {
       if (stillOnScreen.has(String(entry.job_id))) continue;
       const wrapper = document.createElement("div");

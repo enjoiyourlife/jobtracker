@@ -299,12 +299,24 @@ def queue_data():
 
 @app.route("/api/poll-status")
 def poll_status():
-    """JSON status the base template's JS polls to update the banner and trigger a queue refresh."""
+    """
+    JSON status the base template's JS polls to update the banner,
+    sync every [data-poll-button] on the page, and trigger a queue
+    refresh.
+
+    button_html is server-rendered from the same _poll_button.html
+    partial the initial page load uses, rather than a second copy of
+    that markup hand-written in JS — one source of truth for what the
+    button says/shows, whether it's set at page-load time or live.
+    """
     return {
         "polling": _poll_state["running"],
         "poll_done": _poll_state["boards_done"],
         "poll_total": _poll_state["boards_total"],
         "resolving": _resolve_state["running"],
+        "button_html": render_template(
+            "_poll_button.html", polling_in_progress=_poll_state["running"]
+        ),
     }
 
 

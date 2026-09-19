@@ -302,6 +302,80 @@
 </style>
 </head>
 <body>
+<script>
+// Shared status poller — every page gets a live-updating banner with
+// no full-page reload, which would yank the page out from under
+// anyone reading or scrolling (the queue page listens via onUpdate()
+// to also fetch fresh entries and fade them in, rather than reloading).
+//
+// Defined here, before the page's own content renders below, on
+// purpose: a child template's own <script> (queue.html's refresh(),
+// settings.html's reload-on-resolve-finish) gets substituted into the
+// content area, which Jinja places earlier in the final HTML than
+// anything in base.html written after it — so a child script calling
+// window.jobtrackerStatus.onUpdate() at parse time would find it
+// undefined and silently no-op if this stayed below the content area.
+// Confirmed empirically, not just reasoned through: rendering the
+// real page and comparing byte offsets showed the onUpdate() call
+// landing before this assignment when it lived after </main>. tick()'s
+// own DOM lookups are all safe this early regardless — they're inside
+// callbacks that only run after `await fetch(...)` suspends, by which
+// point the rest of the document has parsed.
+window.jobtrackerStatus = (function () {
+  const listeners = [];
+  let wasRunning = false;
+
+  function updateBanner(status) {
+    const banner = document.getElementById("status-banner");
+    if (banner) {
+      const text = banner.querySelector(".status-text");
+      if (status.resolving) {
+        banner.style.display = "";
+        text.textContent = "Looking up companies…";
+      } else if (status.polling) {
+        banner.style.display = "";
+        text.textContent = `Polling boards for new postings (${status.poll_done}/${status.poll_total})…`;
+      } else {
+        banner.style.display = "none";
+      }
+    }
+
+    // Every [data-poll-button] (the sidebar's persistent button, and
+    // Queue's empty-state "Poll for new postings" CTA) is server-
+    // rendered from polling_in_progress at whatever moment its page
+    // happened to load — without this, one left disabled/"Polling…"
+    // by a poll that was still running at load time stays stuck that
+    // way forever once the poll actually finishes, since nothing else
+    // here reloads the page to pick up fresh state. innerHTML comes
+    // from the server (data.button_html) rather than being duplicated
+    // as a JS string, so there's one source of truth for this markup,
+    // not two hand-synced ones.
+    if (status.button_html !== undefined) {
+      document.querySelectorAll("[data-poll-button]").forEach((btn) => {
+        btn.disabled = status.polling;
+        btn.innerHTML = status.button_html;
+      });
+    }
+  }
+
+  async function tick() {
+    try {
+      const res = await fetch("{{ url_for('poll_status') }}");
+      if (res.ok) {
+        const status = await res.json();
+        updateBanner(status);
+        const running = status.polling || status.resolving;
+        if (running || wasRunning) listeners.forEach((fn) => fn(status));
+        wasRunning = running;
+      }
+    } catch (e) { /* transient network hiccup — try again next tick */ }
+    setTimeout(tick, 2500);
+  }
+
+  tick();
+  return { onUpdate: (fn) => listeners.push(fn) };
+})();
+</script>
 <aside class="sidebar">
   <div class="brand">
     <span class="brand-mark">
@@ -327,14 +401,8 @@
   </a>
   <div class="sidebar-spacer"></div>
   <form method="post" action="{{ url_for('poll') }}">
-    <button type="submit" class="poll-btn" {{ 'disabled' if polling_in_progress else '' }}>
-      {% if polling_in_progress %}
-        <svg class="spin" viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Polling…
-      {% else %}
-        <svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-6.32 4M3 3v4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Poll for new postings
-      {% endif %}
+    <button type="submit" class="poll-btn" data-poll-button {{ 'disabled' if polling_in_progress else '' }}>
+      {% include "_poll_button.html" with context %}
     </button>
   </form>
 </aside>
@@ -362,62 +430,6 @@
 </main>
 </div>
 <script>
-// Shared status poller — every page gets a live-updating banner with
-// no full-page reload, which would yank the page out from under
-// anyone reading or scrolling (the queue page listens via onUpdate()
-// to also fetch fresh entries and fade them in, rather than reloading).
-window.jobtrackerStatus = (function () {
-  const listeners = [];
-  let wasRunning = false;
-
-  function updateBanner(status) {
-    const banner = document.getElementById("status-banner");
-    if (banner) {
-      const text = banner.querySelector(".status-text");
-      if (status.resolving) {
-        banner.style.display = "";
-        text.textContent = "Looking up companies…";
-      } else if (status.polling) {
-        banner.style.display = "";
-        text.textContent = `Polling boards for new postings (${status.poll_done}/${status.poll_total})…`;
-      } else {
-        banner.style.display = "none";
-      }
-    }
-
-    // The sidebar's own button is server-rendered from
-    // polling_in_progress at whatever moment the page happened to
-    // load — without this it stays stuck on "Polling…" (disabled)
-    // forever once a poll started before this page loaded finishes,
-    // since nothing else here ever reloads the page to pick up the
-    // fresh state. Markup mirrors base.html's Jinja version exactly.
-    const pollBtn = document.querySelector(".poll-btn");
-    if (pollBtn) {
-      pollBtn.disabled = status.polling;
-      pollBtn.innerHTML = status.polling
-        ? '<svg class="spin" viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Polling…'
-        : '<svg viewBox="0 0 20 20" fill="none"><path d="M10 3a7 7 0 11-6.32 4M3 3v4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>Poll for new postings';
-    }
-  }
-
-  async function tick() {
-    try {
-      const res = await fetch("{{ url_for('poll_status') }}");
-      if (res.ok) {
-        const status = await res.json();
-        updateBanner(status);
-        const running = status.polling || status.resolving;
-        if (running || wasRunning) listeners.forEach((fn) => fn(status));
-        wasRunning = running;
-      }
-    } catch (e) { /* transient network hiccup — try again next tick */ }
-    setTimeout(tick, 2500);
-  }
-
-  tick();
-  return { onUpdate: (fn) => listeners.push(fn) };
-})();
-
 // Every action on this app — Settings' Save, Remove on Status/
 // Applications, Mark submitted — is a plain form POST that redirects
 // back to the same page. That's a real navigation, so the browser
